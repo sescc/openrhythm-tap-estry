@@ -196,6 +196,16 @@ export function createJudge(notes, opts = {}) {
 
   /** Call once per animation frame with the current AudioContext time. */
   function update(contextNow) {
+    // M1.7 fix: this used to compare the raw scheduling clock (contextNow)
+    // directly against note.time, while judgeTap/judgeRelease compare
+    // against `rawContextTime - calibrationOffsetSec`. On a device with a
+    // large positive (late) offset - e.g. Bluetooth, ~250ms - a note was
+    // auto-missed here at contextNow > note.time + MISS_WINDOW (150ms)
+    // BEFORE the player's correspondingly-late real tap ever arrived at
+    // judgeTap, so every tap on such a device was "ignored" against an
+    // already-judged note no matter how well calibrated. `heard` puts this
+    // sweep in the SAME reference frame judgeTap/judgeRelease use.
+    const heard = contextNow - calibrationOffsetSec;
     // Not early-exited on first not-yet-due note: a hold's controlling
     // deadline is its releaseTime, not its (sort-key) press time, so later
     // array entries can become due before an earlier hold's release does.
@@ -203,18 +213,18 @@ export function createJudge(notes, opts = {}) {
       const n = notes[i];
       if (n.judged) continue;
       if (n.kind === 'hold' && n._pressResolved) {
-        if (contextNow - n.releaseTime > MISS_WINDOW) {
+        if (heard - n.releaseTime > MISS_WINDOW) {
           resolveFinal(n, 'miss', null, 'auto', 'holdRelease');
         }
         continue;
       }
       if (n.fake) {
-        if (contextNow - n.time > FAKE_WINDOW) {
+        if (heard - n.time > FAKE_WINDOW) {
           resolveFinal(n, 'avoided', null, 'auto', 'tap');
         }
         continue;
       }
-      if (contextNow - n.time > MISS_WINDOW) {
+      if (heard - n.time > MISS_WINDOW) {
         resolveFinal(n, 'miss', null, 'auto', 'tap');
       }
     }

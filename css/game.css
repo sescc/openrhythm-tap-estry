@@ -105,6 +105,10 @@ body {
 .btn:active {
   transform: scale(0.97);
 }
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 .btn--primary {
   background: var(--accent);
   border-color: var(--accent);
@@ -174,6 +178,25 @@ body {
   cursor: pointer;
 }
 
+/* Calibration count-in countdown ("4 3 2 1 Tap!") - no visual pulse tied to
+   the recorded beats themselves (see js/main.js runCalibrationFlow), only
+   this text, which updates in sync with the count-in clicks. */
+.calibrate-countdown {
+  font-size: clamp(2rem, 12vw, 3.5rem);
+  font-weight: 800;
+  color: var(--ink-soft);
+  min-height: 1.2em;
+  margin: 4px 0;
+}
+
+/* Back button (M1.7) - always visible on the calibrate screen, below the
+   tap circle, spaced apart like .menu-actions' own buttons. */
+#btn-calibrate-back {
+  margin: 16px auto 0;
+  display: block;
+  max-width: 200px;
+}
+
 /* --- practice ----------------------------------------------------------- */
 
 .practice-mascot {
@@ -215,6 +238,24 @@ body {
   margin: 10px 0;
   overflow: hidden;
 }
+/* The inner positioning parent for markers/playhead (M1.7 cosmetic fix) -
+   inset horizontally from the strip's own edges by the largest marker's
+   own radius (the cue marker, 9px = 18px/2). Percentage `left` positions on
+   any child are relative to THIS box's width, not the strip's - so a
+   marker at 0%/100% sits fully inside the strip instead of being half-
+   clipped by the strip's own overflow:hidden at its own edge (percentage
+   positioning is relative to the nearest positioned ancestor's PADDING
+   box, which padding on .practice-timeline itself would not have moved).
+   js/main.js practiceEls() points timelineEl at THIS element, not the
+   outer strip, so js/main.js buildPracticeTimeline()/the playhead's own
+   per-frame `left` both use the same coordinate space automatically. */
+.practice-timeline__track {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 9px;
+  right: 9px;
+}
 .practice-timeline__note {
   position: absolute;
   top: 50%;
@@ -231,6 +272,80 @@ body {
   border-radius: 3px;
   background: var(--leaf);
 }
+/* A fake ("don't tap") note - never a filled dot, an X glyph instead so it
+   can never be mistaken for a real tap target. Overrides --note's dot
+   styling entirely (own background/border/shape), see js/main.js
+   buildPracticeTimeline. */
+.practice-timeline__note--fake {
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink-soft);
+}
+/* Per-dot feedback (M1.7): recoloured once THAT note is judged - after
+   .practice-timeline__note/--hold/--fake's own background so hit/miss
+   always wins regardless of which shape it's applied to. */
+.practice-timeline__note--hit {
+  background: var(--leaf);
+}
+.practice-timeline__note--miss {
+  background: var(--card);
+  border: 2px solid var(--accent-dark);
+}
+/* A fake marker never gets the filled/outlined dot treatment above - just
+   its glyph recolours (green = correctly avoided, red = bonked). */
+.practice-timeline__note--fake.practice-timeline__note--hit {
+  background: transparent;
+  border: none;
+  color: var(--leaf);
+}
+.practice-timeline__note--fake.practice-timeline__note--miss {
+  background: transparent;
+  border: none;
+  color: var(--accent-dark);
+}
+/* A HIT hold needs to read as distinct from an unjudged hold (both would
+   otherwise be the same solid green pill) - a white inner ring plus a
+   second green ring reads as "done", not just "this game has holds". */
+.practice-timeline__note--hold.practice-timeline__note--hit {
+  background: var(--leaf);
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--leaf);
+}
+
+/* Cue markers (M1.7) - the "listen" half of call-and-response, hollow (vs.
+   tap markers' filled dot) and showing the cue's own glyph. Bigger than a
+   tap marker so the glyph text fits. */
+.practice-timeline__cue {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border-radius: 50%;
+  border: 2px solid var(--muted);
+  background: var(--card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  line-height: 1;
+  color: var(--ink-soft);
+}
+
+.practice-legend {
+  margin: 2px 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 .practice-timeline__playhead {
   position: absolute;
   top: 0;

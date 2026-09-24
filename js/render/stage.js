@@ -395,29 +395,37 @@ export function createStage(container) {
    * to, right as it sounds. `resolveCueType(srcGame, cueId)` looks up that
    * cue's {glyph, meaning} for the corner icon + first-appearance label -
    * stage.js stays a leaf module (no js/games/* import) by taking it as a
-   * callback instead. */
-  function tick(nowCtx, chart, resolveGame, resolveCueType) {
+   * callback instead. `calibrationOffsetSec` (M1.7, default 0 for backward
+   * compatibility) shifts every VISUAL-only element (guide rings, cue
+   * icon/name, mascot pulses, beat pulse) to `nowCtx - calibrationOffsetSec`
+   * - the moment the player actually HEARS the audio, not the moment it was
+   * scheduled - so on a laggy device (e.g. Bluetooth, ~250ms) a guide ring
+   * still closes right as the sound reaches the player's ears instead of
+   * ~250ms ahead of it. Judging itself (js/input.js) is untouched by this -
+   * only what's drawn on screen shifts. */
+  function tick(nowCtx, chart, resolveGame, resolveCueType, calibrationOffsetSec = 0) {
     if (!chart) return;
-    const beatsElapsed = (nowCtx - chart.startTime) / chart.beatDuration;
+    const visualNow = nowCtx - calibrationOffsetSec;
+    const beatsElapsed = (visualNow - chart.startTime) / chart.beatDuration;
     const beatFloor = Math.floor(beatsElapsed);
     if (beatsElapsed >= 0 && beatFloor !== lastBeatFloor) {
       lastBeatFloor = beatFloor;
       pulseBeat();
     }
-    while (cueSweepIdx < chart.cues.length && chart.cues[cueSweepIdx].time <= nowCtx) {
+    while (cueSweepIdx < chart.cues.length && chart.cues[cueSweepIdx].time <= visualNow) {
       const cue = chart.cues[cueSweepIdx];
       if (cue.srcGame) setMascot(cue.srcGame, resolveGame);
       bounceCue(cue.cueId, resolveCueType?.(cue.srcGame, cue.cueId));
       mascotCuePulse();
       cueSweepIdx++;
     }
-    updateGuides(nowCtx, chart.beatDuration);
+    updateGuides(visualNow, chart.beatDuration);
     // Balloon Pump-style inflate: while a hold's press has resolved but its
     // release hasn't, scale the mascot up toward its release time. Harmless
     // (near-instant 0->1) for any other game's occasional hold notes.
     if (activeHoldNote) {
       const span = activeHoldNote.releaseTime - activeHoldNote.time;
-      const t = span > 0 ? Math.min(1, Math.max(0, (nowCtx - activeHoldNote.time) / span)) : 1;
+      const t = span > 0 ? Math.min(1, Math.max(0, (visualNow - activeHoldNote.time) / span)) : 1;
       mascot.style.transform = `scale(${(1 + 0.6 * t).toFixed(3)})`;
     }
   }

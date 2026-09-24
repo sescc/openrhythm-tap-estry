@@ -1,0 +1,17 @@
+# Claude Code per-machine settings (local permission rules).
+# .claude/launch.json is shared dev-server config and stays tracked.
+.claude/settings.local.json
+
+# graphify's derived code graph (rebuild with `graphify .`)
+graphify-out/
+
+# Node, if tooling dependencies are ever installed
+node_modules/
+
+# OS clutter
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local scratch file for commit messages
+commit-msg.txt

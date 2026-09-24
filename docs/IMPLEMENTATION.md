@@ -1,4 +1,4 @@
-# OpenRhythmOD — implementation mapping
+# TapESTORY — implementation mapping
 
 Every row in `ARCHITECTURE.md` maps here to `file:symbol`, to `planned`, or to `open question`.
 A row pointing at something that no longer exists is drift: fix the code or fix the row.

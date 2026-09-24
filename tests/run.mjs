@@ -5,7 +5,7 @@
 // any of them failed or threw. No test framework/dependency - this project
 // has none, on purpose (see README.md).
 
-const TEST_FILES = ['calibration_test.mjs', 'judging_e2e_test.mjs', 'pause_test.mjs'];
+const TEST_FILES = ['calibration_test.mjs', 'judging_e2e_test.mjs', 'pause_test.mjs', 'sw_test.mjs', 'dom_ids_test.mjs'];
 
 let anyFailed = false;
 

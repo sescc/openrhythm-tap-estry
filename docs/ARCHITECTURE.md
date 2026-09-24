@@ -1,4 +1,4 @@
-# OpenRhythmOD — architecture (intent)
+# TapESTORY — architecture (intent)
 
 Normative and hand-authored. This says what the system is *supposed* to be; `IMPLEMENTATION.md`
 maps each row to real code. Where they disagree, one of the two is wrong — say which and fix it.

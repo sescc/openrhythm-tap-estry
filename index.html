@@ -3,8 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>OpenRhythmOD</title>
+  <title>TapESTORY</title>
   <meta name="description" content="A tiny procedural rhythm-storybook game - tap to the beat, paint the story." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#e8a0a0" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon.svg" />
   <link rel="stylesheet" href="css/game.css" />
 </head>
 <body>
@@ -13,7 +17,7 @@
     <!-- MENU ------------------------------------------------------------->
     <section id="screen-menu" class="screen">
       <div class="panel panel--menu">
-        <h1 class="title">OpenRhythmOD</h1>
+        <h1 class="title">TapESTORY</h1>
         <p class="subtitle">A storybook that paints itself, one tap at a time.</p>
         <p id="menu-progress" class="status-text"></p>
         <p id="menu-calibration" class="status-text status-text--small"></p>
@@ -60,8 +64,9 @@
         <h2>Calibrate your timing</h2>
         <p id="calibrate-status" class="status-text">Tap along with the metronome.</p>
         <p id="calibrate-detail" class="status-text status-text--small"></p>
-        <button id="btn-calibrate-begin" class="btn btn--primary" type="button">Start tapping</button>
-        <button id="calibrate-taparea" class="tap-circle" type="button" hidden>TAP</button>
+        <div id="calibrate-countdown" class="calibrate-countdown"></div>
+        <button id="calibrate-taparea" class="tap-circle" type="button">TAP</button>
+        <button id="btn-calibrate-back" class="btn" type="button">Back</button>
       </div>
     </section>
 
@@ -72,8 +77,11 @@
         <h2 id="practice-title">Practice</h2>
         <p id="practice-meaning" class="status-text"></p>
         <div class="practice-timeline" id="practice-timeline">
-          <div class="practice-timeline__playhead" id="practice-playhead"></div>
+          <div class="practice-timeline__track" id="practice-timeline-track">
+            <div class="practice-timeline__playhead" id="practice-playhead"></div>
+          </div>
         </div>
+        <p class="practice-legend">○ listen &middot; ● tap<span id="practice-legend-fake" hidden> &middot; ✕ don't tap</span></p>
         <p id="practice-phase" class="practice-phase"></p>
         <p id="practice-feedback" class="practice-feedback"></p>
         <p id="practice-tally" class="practice-tally"></p>
@@ -118,6 +126,7 @@
         <p id="end-caption" class="end-caption"></p>
         <p id="end-score" class="end-stat"></p>
         <p id="end-counts" class="end-stat"></p>
+        <p id="end-seed" class="end-stat end-seed"></p>
         <p id="end-timing" class="end-stat" hidden></p>
         <p id="end-recalibrate" class="end-stat end-recalibrate" hidden></p>
         <div class="menu-actions">

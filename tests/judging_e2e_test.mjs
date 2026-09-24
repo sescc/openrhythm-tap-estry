@@ -78,6 +78,36 @@ assert(plainTaps.length > 5, 'sanity: chart should have several plain tap notes'
   }
 }
 
+// --- Part 4: update()'s auto-miss sweep must respect calibrationOffsetSec
+// too, not just judgeTap/judgeRelease (M1.7 bug: on a device with a large
+// positive/late offset - e.g. Bluetooth, ~250ms - update() used to compare
+// the RAW scheduling clock against note.time, so a note was auto-missed by
+// update() at note.time+MISS_WINDOW(150ms) real-clock-time, BEFORE the
+// player's correspondingly-late real tap (which physically arrives around
+// note.time+offset in real time) ever reached judgeTap. Calibration would
+// measure a correct offset and every tap would still be "ignored" forever.
+{
+  const note = { kind: 'tap', time: 10, judged: false, judgement: null };
+  const calibrationOffsetSec = 0.3; // 300ms late device, within MAX_OFFSET_MS
+  const judgedEvents = [];
+  const judge = createJudge([note], { calibrationOffsetSec, onJudged: (e) => judgedEvents.push(e) });
+
+  // Real clock time note.time+0.2 = 200ms after the note's schedule time -
+  // MORE than the raw MISS_WINDOW(150ms) but the note hasn't actually been
+  // "heard" yet (heard = 10.2-0.3 = 9.9, i.e. -100ms - not due).
+  judge.update(10.2);
+  assert(judgedEvents.length === 0, `note should not be auto-missed yet (got ${judgedEvents.length} event(s): ${JSON.stringify(judgedEvents)})`);
+
+  // The player's real tap, correspondingly late in real time - this is what
+  // a genuine ~300ms-latency device's tap looks like.
+  judge.judgeTap(10.3, 'test');
+  assert(judgedEvents.length === 1, `expected exactly 1 judged event after the late tap, got ${judgedEvents.length}`);
+  if (judgedEvents.length === 1) {
+    const e = judgedEvents[0];
+    assert(e.type === 'judged' && (e.judgement === 'perfect' || e.judgement === 'good'), `late-device tap should be perfect/good, got ${JSON.stringify(e.type === 'judged' ? e.judgement : e.type)}`);
+  }
+}
+
 const ok = failures === 0;
 console.log(ok ? 'PASS - judging end-to-end checks passed' : `FAIL - ${failures} check(s) failed`);
 if (!ok) process.exitCode = 1;
