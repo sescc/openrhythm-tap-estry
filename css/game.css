@@ -1,0 +1,726 @@
+/* css/game.css - storybook/watercolour look, system fonts only, mobile-first.
+   All gameplay-time animation (stickers, judgement flash, beat pulse, cue
+   bounce, region reveal) is transform/opacity only - see js/render/stage.js. */
+
+:root {
+  --paper: #f6f1e4;
+  --card: #fffdf8;
+  --ink: #2e2a25;
+  --ink-soft: #5c4a3d;
+  --muted: #7a6a5d;
+  --accent: #e8a0a0;
+  --accent-dark: #dd8f8f;
+  --gold: #f2c14e;
+  --leaf: #8fbf9f;
+  --border: #d8cdb8;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  overflow-x: hidden; /* hard requirement: no horizontal scroll, any width */
+}
+
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+#app {
+  width: 100%;
+}
+
+/* --- screens ------------------------------------------------------- */
+
+.screen {
+  display: none;
+  min-height: 100vh;
+  width: 100%;
+  padding: 16px; /* 16px gutters, all screen sizes */
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.screen--active {
+  display: flex;
+}
+
+.panel {
+  width: 100%;
+  max-width: 640px;
+  background: var(--card);
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+  box-sizing: border-box;
+  text-align: center;
+}
+
+/* --- menu ------------------------------------------------------------ */
+
+.title {
+  font-size: clamp(1.8rem, 6vw, 2.4rem);
+  margin: 0 0 4px;
+  color: var(--ink-soft);
+}
+
+.subtitle {
+  margin: 0 0 20px;
+  color: var(--muted);
+}
+
+.menu-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 auto 16px;
+  max-width: 360px;
+}
+
+.btn {
+  font: inherit;
+  font-size: 1rem;
+  padding: 12px 20px;
+  border-radius: 999px;
+  border: 2px solid var(--border);
+  background: #fff;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.btn:active {
+  transform: scale(0.97);
+}
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.btn--primary:hover {
+  background: var(--accent-dark);
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--muted);
+  justify-content: center;
+  text-align: left;
+}
+
+.how-to {
+  margin-top: 12px;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  text-align: left;
+}
+.how-to summary {
+  cursor: pointer;
+  font-weight: 600;
+  text-align: center;
+}
+.how-to ul {
+  padding-left: 20px;
+  margin: 10px 0 0;
+}
+.how-to li {
+  margin: 4px 0;
+}
+.how-to__legend-title {
+  margin: 12px 0 4px;
+  font-weight: 700;
+}
+
+/* --- calibrate --------------------------------------------------------- */
+
+.status-text {
+  color: var(--muted);
+  min-height: 1.4em;
+}
+.status-text--small {
+  font-size: 0.85rem;
+  min-height: 1.2em;
+}
+
+.tap-circle {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: var(--leaf);
+  color: #fff;
+  font: inherit;
+  font-size: 1.1rem;
+  font-weight: 700;
+  border: none;
+  margin: 20px auto 0;
+  display: block;
+  touch-action: none;
+  cursor: pointer;
+}
+
+/* --- practice ----------------------------------------------------------- */
+
+.practice-mascot {
+  font-size: 3rem;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.practice-feedback {
+  min-height: 1.6em;
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--leaf);
+}
+.practice-feedback--miss {
+  color: var(--accent-dark);
+}
+.practice-phase {
+  font-weight: 700;
+  color: var(--ink-soft);
+  min-height: 1.4em;
+  margin: 4px 0 0;
+}
+.practice-tally {
+  color: var(--muted);
+  font-size: 0.9rem;
+  min-height: 1.2em;
+}
+
+/* Timeline strip (section D) - upcoming expected taps for the CURRENT
+   practice section, with a moving playhead. Note markers are static once
+   built (see js/main.js buildPracticeTimeline); only the playhead's `left`
+   is updated per frame. */
+.practice-timeline {
+  position: relative;
+  width: 100%;
+  height: 28px;
+  background: #eee2cc;
+  border-radius: 8px;
+  margin: 10px 0;
+  overflow: hidden;
+}
+.practice-timeline__note {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--accent-dark);
+}
+.practice-timeline__note--hold {
+  width: 4px;
+  height: 16px;
+  margin: -8px 0 0 -2px;
+  border-radius: 3px;
+  background: var(--leaf);
+}
+.practice-timeline__playhead {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--gold);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+}
+
+/* --- loading ---------------------------------------------------------- */
+
+.progress-track {
+  width: 100%;
+  height: 14px;
+  background: #eee2cc;
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 16px 0 8px;
+}
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--gold), var(--accent));
+  transition: width 0.2s ease;
+}
+
+/* --- stage (play screen) ------------------------------------------------ */
+
+.stage {
+  position: relative;
+  width: 100%;
+  max-width: 900px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  touch-action: none;
+}
+
+.stage__picture {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1280 / 922; /* matches js/story/loader.js panel sizing */
+  background: #faf6ec;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
+.stage__wash,
+.stage__region-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none; /* never intercept the stage's tap handling */
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* Faint pencil-sketch/under-wash of the good image, always visible under
+   the unrevealed parts of a panel so they read as "not yet painted" rather
+   than blank. Set once per panel in js/render/stage.js showPanel(). */
+.stage__wash {
+  z-index: 0;
+  opacity: 0.12;
+  filter: grayscale(1);
+}
+
+/* One pre-created element per reveal region (per good/fumbled variant),
+   masked to its own soft-edged band of the picture. Tap time only ever
+   flips opacity 0 -> 1 here - no DOM creation, no canvas drawing. */
+.stage__region-img {
+  opacity: 0;
+  will-change: opacity;
+  transition: opacity 120ms ease;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+  -webkit-mask-size: 100% 100%;
+}
+
+.stage__caption {
+  max-width: 640px;
+  text-align: center;
+  color: var(--ink-soft);
+  font-size: 1rem;
+  min-height: 1.4em;
+  padding: 0 8px;
+}
+
+.stage__cue-icon {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  color: #7a6ea8;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  opacity: 0.85;
+  transform: scale(1);
+  z-index: 60;
+}
+.stage__cue-icon--bounce {
+  animation: cueBounce 0.3s ease;
+}
+@keyframes cueBounce {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.stage__pulse {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--gold);
+  opacity: 0.5;
+  transform: scale(1);
+  z-index: 60;
+}
+.stage__pulse--active {
+  animation: beatPulse 0.25s ease;
+}
+/* Quieter metronome (M1.6): the cue icon now carries the "something means
+   something" signal, so the beat dot only needs to read as a steady pulse,
+   not compete with it - smaller scale/opacity swing than before. */
+@keyframes beatPulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.45;
+  }
+  30% {
+    transform: scale(1.35);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0.45;
+  }
+}
+
+/* First-appearance cue name label (M1.6 section C) - fades in next to the
+   cue icon the first time a given cueId sounds this session, then away. */
+.stage__cue-name {
+  position: absolute;
+  top: 12px;
+  left: 54px;
+  max-width: 55%;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  transform: translateX(-6px);
+  pointer-events: none;
+  z-index: 59;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stage__cue-name--show {
+  animation: cueNameFade 2.4s ease forwards;
+}
+@keyframes cueNameFade {
+  0% {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  12% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  75% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+}
+
+/* Guide markers (M1.6 section C) - a ring that shrinks in over ~1 beat and
+   lands on the expected tap moment. Centered on the picture; transform/
+   opacity only, pre-created and pooled (see js/render/stage.js). Holds get
+   a second, differently-coloured ring for the release point. */
+.stage__guide {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 3px solid var(--gold);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 55;
+  will-change: transform, opacity;
+  /* JS sets `transform: translate(-50%,-50%) scale(...)` per frame - the
+     translate half does the centering, so no margin offset here. */
+}
+.stage__guide--release {
+  border-color: var(--accent);
+  border-style: dashed;
+}
+
+.stage__mascot {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18);
+  z-index: 60;
+  transform: scale(1);
+  transform-origin: center;
+  will-change: transform;
+}
+.stage__mascot-emoji {
+  font-size: 1.7rem;
+  line-height: 1;
+  transform: translateY(1px);
+}
+.stage__mascot--cue {
+  animation: mascotCue 0.28s ease;
+}
+@keyframes mascotCue {
+  0% {
+    transform: scale(1) rotate(0deg);
+  }
+  45% {
+    transform: scale(1.22) rotate(-6deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+.stage__mascot--good {
+  animation: mascotGood 0.45s ease;
+}
+@keyframes mascotGood {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.3);
+  }
+  60% {
+    transform: scale(0.95);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.stage__mascot--miss {
+  animation: mascotMiss 0.4s ease;
+}
+@keyframes mascotMiss {
+  0% {
+    transform: translateX(0) rotate(0deg);
+  }
+  25% {
+    transform: translateX(-4px) rotate(-8deg);
+  }
+  50% {
+    transform: translateX(4px) rotate(8deg);
+  }
+  75% {
+    transform: translateX(-2px) rotate(-4deg);
+  }
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+}
+
+.stage__judgement {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.8);
+  opacity: 0;
+  font-size: clamp(1.4rem, 6vw, 2rem);
+  font-weight: 800;
+  pointer-events: none;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  z-index: 50;
+}
+.stage__judgement--flash {
+  animation: judgeFlash 0.6s ease;
+}
+@keyframes judgeFlash {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+  70% {
+    opacity: 1;
+    transform: translate(-50%, -40%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -60%) scale(0.9);
+  }
+}
+
+.stage__sticker {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.4);
+  pointer-events: none;
+  z-index: 40;
+  --sticker-color: #f2c14e;
+}
+.stage__sticker svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+.stage__sticker--pop {
+  animation: stickerPop 0.7s ease forwards;
+}
+@keyframes stickerPop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.3) rotate(-15deg);
+  }
+  30% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.2) rotate(8deg);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(-50%, -70%) scale(1) rotate(-4deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -110%) scale(0.85) rotate(0deg);
+  }
+}
+
+/* --- pause overlay (backgrounding mid-song) ------------------------------ */
+
+.pause-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 18, 15, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 16px;
+}
+.pause-overlay[hidden] {
+  display: none;
+}
+.pause-overlay__button {
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: var(--card);
+  border: none;
+  border-radius: 18px;
+  padding: 32px 40px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+.pause-overlay__title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--ink-soft);
+}
+.pause-overlay__hint {
+  font-size: 1rem;
+  color: var(--muted);
+}
+
+/* --- end screen --------------------------------------------------------- */
+
+.panel--end {
+  max-width: 560px;
+}
+
+.end-image {
+  width: 100%;
+  max-width: 480px;
+  margin: 12px auto;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+.end-image__canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.end-caption {
+  font-style: italic;
+  color: var(--ink-soft);
+  margin: 8px 0 16px;
+}
+.end-stat {
+  margin: 2px 0;
+  color: var(--ink);
+}
+.end-seed {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  color: #8a7d6d;
+}
+.end-recalibrate {
+  font-weight: 700;
+  color: var(--accent-dark);
+}
+
+/* --- debug overlay (?debug) ---------------------------------------------- */
+
+/* Top-right + pointer-events:none (not bottom-left, and never click-
+   capturing): every screen's interactive buttons live in a centered panel
+   or a bottom `.menu-actions` row, so a top-right corner never sits over
+   them - fixed after it was found overlapping the end screen's "Play
+   again" button at bottom-left. pointer-events:none is belt-and-braces so
+   it can never block a click regardless of screen/viewport size; the log
+   only ever needs to be READ (rows auto-prepend and are capped at 40),
+   never scrolled by hand. */
+#debug-overlay {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  max-width: min(320px, calc(100vw - 32px));
+  max-height: 32vh;
+  overflow: auto;
+  background: rgba(20, 18, 15, 0.85);
+  color: #e8e0d0;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 8px 10px;
+  border-radius: 8px;
+  z-index: 1000;
+  pointer-events: none;
+}
+#debug-stats {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+#debug-log div {
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+/* --- small screens -------------------------------------------------------- */
+
+@media (max-width: 400px) {
+  .panel {
+    padding: 18px;
+  }
+  .menu-actions {
+    max-width: 100%;
+  }
+}

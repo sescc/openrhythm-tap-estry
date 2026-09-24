@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>OpenRhythmOD - learnability lint</title>
+<style>
+  body { font: 14px/1.5 ui-monospace, Menlo, monospace; background:#161412; color:#e8e0d0; padding:16px; }
+  h1 { font-size: 16px; }
+  #summary { font-size: 15px; font-weight: 700; margin: 12px 0; }
+  .ok { color: #8fbf9f; }
+  .bad { color: #e17b6b; }
+  .row { margin: 2px 0; white-space: pre-wrap; }
+  .game-hdr { margin-top: 14px; font-weight: 700; color: #f2c14e; }
+  #log { max-height: 70vh; overflow: auto; border: 1px solid #333; padding: 8px; }
+  button { font: inherit; padding: 6px 14px; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<h1>OpenRhythmOD - learnability lint</h1>
+<p>Runs js/songform.js lintChart() over every game x level x seed combination and reports violations.
+   Also runs each remix-eligible combination assuming all 6 games are cleared.</p>
+<button id="run">Run lint (50 seeds x 6 games x levels 1-12, + remix)</button>
+<div id="summary"></div>
+<div id="log"></div>
+
+<script type="module">
+  import { makeRng, subRng } from '../js/rng.js';
+  import { buildChart, lintChart } from '../js/songform.js';
+  import { GAMES, REMIX } from '../js/games/index.js';
+
+  const SEEDS = 50;
+  const LEVELS = Array.from({ length: 12 }, (_, i) => i + 1);
+  const ALL_CLEARED = GAMES.map((g) => g.id);
+
+  const summaryEl = document.getElementById('summary');
+  const logEl = document.getElementById('log');
+
+  function row(text, cls) {
+    const d = document.createElement('div');
+    d.className = 'row' + (cls ? ' ' + cls : '');
+    d.textContent = text;
+    logEl.appendChild(d);
+  }
+
+  document.getElementById('run').addEventListener('click', () => {
+    logEl.innerHTML = '';
+    summaryEl.textContent = 'Running...';
+    summaryEl.className = '';
+    setTimeout(runAll, 10); // let the button repaint first
+  });
+
+  function runAll() {
+    const t0 = performance.now();
+    let totalCharts = 0;
+    let totalViolations = 0;
+    let failingCombos = 0;
+
+    const allGames = [...GAMES, REMIX];
+
+    for (const game of allGames) {
+      const hdr = document.createElement('div');
+      hdr.className = 'game-hdr';
+      hdr.textContent = `--- ${game.name} (${game.id}) ---`;
+      logEl.appendChild(hdr);
+
+      let gameViolations = 0;
+      let gameCombos = 0;
+
+      for (const level of LEVELS) {
+        for (let s = 0; s < SEEDS; s++) {
+          const seed = `lint:${game.id}:${level}:${s}`;
+          const rng = subRng(seed, 'chart');
+          let chart;
+          try {
+            chart = buildChart(rng, game, level, { clearedIds: ALL_CLEARED });
+          } catch (err) {
+            totalViolations++;
+            gameViolations++;
+            failingCombos++;
+            row(`level ${level} seed ${s}: THREW ${err.message}`, 'bad');
+            continue;
+          }
+          totalCharts++;
+          gameCombos++;
+          const violations = lintChart(chart);
+          if (chart.notes.length === 0) violations.push('chart has ZERO notes - a silent, unplayable song');
+          if (violations.length > 0) {
+            failingCombos++;
+            gameViolations += violations.length;
+            totalViolations += violations.length;
+            row(`level ${level} seed ${s}: ${violations.length} violation(s)`, 'bad');
+            for (const v of violations.slice(0, 5)) row('    ' + v, 'bad');
+            if (violations.length > 5) row(`    ...and ${violations.length - 5} more`, 'bad');
+          }
+        }
+      }
+      row(`${game.id}: ${gameCombos} charts checked, ${gameViolations} violation(s)`, gameViolations ? 'bad' : 'ok');
+    }
+
+    // Remix specifically also needs to work from a FRESH profile (no
+    // cleared games yet) - e.g. a direct ?game=remix link. pickSubGames()
+    // falls back to picking at random from every game in that case; this
+    // re-runs the whole remix sweep with an empty cleared list to make sure
+    // that fallback never regresses into an empty/unplayable chart.
+    {
+      const hdr = document.createElement('div');
+      hdr.className = 'game-hdr';
+      hdr.textContent = `--- Remix (fresh profile, no cleared games) ---`;
+      logEl.appendChild(hdr);
+      let gameViolations = 0;
+      let gameCombos = 0;
+      for (const level of LEVELS) {
+        for (let s = 0; s < SEEDS; s++) {
+          const seed = `lint:remix-empty:${level}:${s}`;
+          const rng = subRng(seed, 'chart');
+          const chart = buildChart(rng, REMIX, level, { clearedIds: [] });
+          totalCharts++;
+          gameCombos++;
+          const violations = lintChart(chart);
+          if (chart.notes.length === 0) violations.push('chart has ZERO notes - a silent, unplayable song');
+          if (violations.length > 0) {
+            failingCombos++;
+            gameViolations += violations.length;
+            totalViolations += violations.length;
+            row(`level ${level} seed ${s}: ${violations.length} violation(s)`, 'bad');
+            for (const v of violations.slice(0, 5)) row('    ' + v, 'bad');
+          }
+        }
+      }
+      row(`remix(no cleared): ${gameCombos} charts checked, ${gameViolations} violation(s)`, gameViolations ? 'bad' : 'ok');
+    }
+
+    const ms = (performance.now() - t0).toFixed(0);
+    summaryEl.textContent =
+      totalViolations === 0
+        ? `PASS - 0 violations across ${totalCharts} charts (${allGames.length} games x ${LEVELS.length} levels x ${SEEDS} seeds, plus remix w/ no cleared games) in ${ms}ms`
+        : `FAIL - ${totalViolations} violation(s) across ${failingCombos} combo(s) of ${totalCharts} charts checked, in ${ms}ms`;
+    summaryEl.className = totalViolations === 0 ? 'ok' : 'bad';
+  }
+</script>
+</body>
+</html>

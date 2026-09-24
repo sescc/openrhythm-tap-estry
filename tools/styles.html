@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OpenRhythmOD - style contact sheet</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0;
+    padding: 24px;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #1c1b22;
+    color: #f1ede4;
+  }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  p.sub { margin: 0 0 20px; color: #b7b2a8; font-size: 14px; max-width: 900px; }
+  .controls {
+    display: flex; gap: 12px; align-items: center; margin-bottom: 20px;
+    background: #26242e; padding: 10px 14px; border-radius: 8px; flex-wrap: wrap;
+  }
+  .controls label { font-size: 13px; display: flex; gap: 6px; align-items: center; }
+  button {
+    background: #f2c14e; color: #26242e; border: none; border-radius: 6px;
+    padding: 7px 14px; font-weight: 600; cursor: pointer; font-size: 13px;
+  }
+  button:hover { background: #ffd875; }
+  button:disabled { opacity: .5; cursor: default; }
+  .status { font-size: 13px; color: #9ee6b8; }
+
+  section.style-block {
+    margin-bottom: 28px; background: #26242e; border-radius: 10px; padding: 16px 18px;
+  }
+  .style-head {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px;
+  }
+  .style-head h2 { margin: 0; font-size: 18px; }
+  .style-head .id { color: #8f8a80; font-size: 12px; }
+  .style-head .cost { color: #f2c14e; font-size: 12px; }
+  .timing { font-size: 12.5px; color: #b7b2a8; margin-bottom: 12px; font-family: ui-monospace, Consolas, monospace; }
+  .timing .over { color: #ff8a80; font-weight: 700; }
+  .timing .ok { color: #9ee6b8; }
+  .timing div { margin: 1px 0; }
+
+  .row { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; align-items: flex-start; }
+  .cell { text-align: center; }
+  .cell canvas { display: block; border-radius: 4px; border: 1px solid #3a3745; background: #111; }
+  .cell canvas.pixelated { image-rendering: pixelated; }
+  .cell .lbl { font-size: 10.5px; color: #9c968a; margin-top: 3px; }
+  .cell .lbl b { color: #d8d3c8; }
+  .row .seedlbl {
+    writing-mode: vertical-rl; text-orientation: mixed; font-size: 11px; color: #b7b2a8;
+    align-self: center; padding-right: 2px;
+  }
+</style>
+</head>
+<body>
+  <h1>Story art - style contact sheet</h1>
+  <p class="sub">
+    Every registered style, showing the FULL STORY ARC (setout &rarr; journey &rarr; obstacle &rarr;
+    climax &rarr; good/bad ending) for 2 seeds (fox, bird), good and fumbled side by side - so shot-type,
+    weather and environment variety across a story is actually visible, not just one repeated postcard shot.
+    Also measures one full-size single-panel render (normal + low-end) and a whole low-end 7-shot "story"
+    render, matching js/story/loader.js sizing, to check the &le;~3s low-end story budget.
+  </p>
+  <div class="controls">
+    <button id="btn-run">Render contact sheet</button>
+    <span class="status" id="status"></span>
+  </div>
+  <div id="output"></div>
+
+  <script type="module">
+    import { generateStory } from '../js/story/storygen.js';
+    import { STYLES } from '../js/story/styles/index.js';
+    import { subRng } from '../js/rng.js';
+    import { getBudget } from '../js/assets.js';
+
+    const SEEDS = [
+      { seed: 'contact-arc-1', hero: 'fox' },
+      { seed: 'contact-arc-2', hero: 'bird' },
+    ];
+    const NUM_PHRASES = 5; // setout, journey, journey/obstacle, obstacle/journey, climax
+    const THUMB_W = 210;
+    const THUMB_H = Math.round(THUMB_W * 0.72);
+
+    const output = document.getElementById('output');
+    const statusEl = document.getElementById('status');
+    const runBtn = document.getElementById('btn-run');
+
+    /** The full story arc for one (seed, hero): 5 phrase beats + both
+     * endings, each carrying its own `kind` (setout/journey/obstacle/
+     * climax/good/bad) - the same kinds composeScene() weights shot type
+     * from, so this deliberately exercises every shot-type bucket. */
+    function arcFor(seedInfo) {
+      const story = generateStory(subRng(seedInfo.seed, 'story'), NUM_PHRASES);
+      const shots = story.panels.map((p) => ({ kind: p.kind, scene: { ...p.scene, heroType: seedInfo.hero } }));
+      shots.push({ kind: 'good', scene: { ...story.goodEnding.scene, heroType: seedInfo.hero } });
+      shots.push({ kind: 'bad', scene: { ...story.badEnding.scene, heroType: seedInfo.hero } });
+      return shots;
+    }
+
+    function mountCanvas(cell, canvas, pixelated) {
+      if (pixelated) canvas.classList.add('pixelated');
+      cell.appendChild(canvas);
+    }
+
+    // setTimeout, NOT requestAnimationFrame: rAF never fires while this tab
+    // is backgrounded/hidden (e.g. driven from an automated browser pane),
+    // which would hang the whole run indefinitely between styles/rows. If
+    // renders seem absurdly slow, check document.hidden before assuming a
+    // real perf problem - a hidden tab throttles timers, not the renderer.
+    async function yieldFrame() {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+
+    function budgetOpts(lowEnd) {
+      const b = getBudget(lowEnd);
+      const w = Math.round(b.maxEdge / b.maxDpr);
+      return { width: w, height: Math.round(w * 0.72), dpr: b.maxDpr, lowEnd, layers: b.watercolorLayers };
+    }
+
+    /** Timing: one full-size single-panel render (normal + low-end), PLUS a
+     * whole low-end "story" (7 shots x good+fumbled = 14 renders, matching
+     * a 5-phrase song + both endings) so the ≤3s budget is checked against
+     * a realistic whole-story load, not just one panel. */
+    function renderTiming(style, arc) {
+      const normalOpts = budgetOpts(false);
+      const lowOpts = budgetOpts(true);
+      const scene = arc[0].scene;
+
+      const t0 = performance.now();
+      style.renderScene(scene, subRng('timing', `${style.id}:normal`), normalOpts);
+      const normalMs = performance.now() - t0;
+
+      const t1 = performance.now();
+      style.renderFumbled(scene, subRng('timing', `${style.id}:low`), lowOpts);
+      const singleLowMs = performance.now() - t1;
+
+      const t2 = performance.now();
+      for (const shot of arc) {
+        style.renderScene(shot.scene, subRng('timing-story', `${style.id}:${shot.kind}:good`), lowOpts);
+        style.renderFumbled(shot.scene, subRng('timing-story', `${style.id}:${shot.kind}:fumbled`), lowOpts);
+      }
+      const storyLowMs = performance.now() - t2;
+
+      return { normalMs, singleLowMs, storyLowMs };
+    }
+
+    async function run() {
+      runBtn.disabled = true;
+      output.innerHTML = '';
+      let done = 0;
+      const total = STYLES.length;
+      const arcs = SEEDS.map(arcFor);
+
+      for (const style of STYLES) {
+        statusEl.textContent = `Rendering ${style.name} (${++done}/${total})...`;
+        await yieldFrame();
+
+        const section = document.createElement('section');
+        section.className = 'style-block';
+        const head = document.createElement('div');
+        head.className = 'style-head';
+        head.innerHTML = `<h2>${style.name}</h2><span class="id">id: ${style.id}</span><span class="cost">cost ${style.cost}/3</span>`;
+        section.appendChild(head);
+
+        const timingEl = document.createElement('div');
+        timingEl.className = 'timing';
+        timingEl.textContent = 'Measuring...';
+        section.appendChild(timingEl);
+
+        const grid = document.createElement('div');
+        section.appendChild(grid);
+        output.appendChild(section);
+
+        const { normalMs, singleLowMs, storyLowMs } = renderTiming(style, arcs[0]);
+        const storyCls = storyLowMs <= 3000 ? 'ok' : 'over';
+        timingEl.innerHTML =
+          `<div>single panel: normal ${normalMs.toFixed(0)}ms | low-end ${singleLowMs.toFixed(0)}ms</div>` +
+          `<div>whole story (7 shots &times; good+fumbled), low-end: <span class="${storyCls}">${storyLowMs.toFixed(0)}ms</span> (target &le;3000ms)</div>`;
+        console.log(`[styles.html] ${style.id} normalMs=${normalMs.toFixed(1)} singleLowMs=${singleLowMs.toFixed(1)} storyLowMs=${storyLowMs.toFixed(1)}`);
+        await yieldFrame();
+
+        for (let s = 0; s < SEEDS.length; s++) {
+          const row = document.createElement('div');
+          row.className = 'row';
+          const seedLbl = document.createElement('div');
+          seedLbl.className = 'seedlbl';
+          seedLbl.textContent = `${SEEDS[s].seed} (${SEEDS[s].hero})`;
+          row.appendChild(seedLbl);
+
+          for (const shot of arcs[s]) {
+            const opts = { width: THUMB_W, height: THUMB_H, dpr: 1, lowEnd: false, layers: 4 };
+            const goodRng = subRng(SEEDS[s].seed, `thumb:${style.id}:${shot.kind}`);
+            const fumbledRng = subRng(SEEDS[s].seed, `thumb:${style.id}:${shot.kind}`); // same seed -> matching composition
+            const goodCanvas = style.renderScene(shot.scene, goodRng, opts);
+            const fumbledCanvas = style.renderFumbled(shot.scene, fumbledRng, opts);
+
+            const goodCell = document.createElement('div');
+            goodCell.className = 'cell';
+            mountCanvas(goodCell, goodCanvas, style.id === 'pixel');
+            const goodLbl = document.createElement('div');
+            goodLbl.className = 'lbl';
+            goodLbl.innerHTML = `<b>${shot.kind}</b> good`;
+            goodCell.appendChild(goodLbl);
+            row.appendChild(goodCell);
+
+            const fumbledCell = document.createElement('div');
+            fumbledCell.className = 'cell';
+            mountCanvas(fumbledCell, fumbledCanvas, style.id === 'pixel');
+            const fumbledLbl = document.createElement('div');
+            fumbledLbl.className = 'lbl';
+            fumbledLbl.innerHTML = `<b>${shot.kind}</b> fumbled`;
+            fumbledCell.appendChild(fumbledLbl);
+            row.appendChild(fumbledCell);
+          }
+          grid.appendChild(row);
+          await yieldFrame();
+        }
+      }
+
+      statusEl.textContent = `Done: ${STYLES.length} styles rendered.`;
+      runBtn.disabled = false;
+    }
+
+    runBtn.addEventListener('click', run);
+    // Auto-run once on load so the sheet is useful without an extra click.
+    run();
+  </script>
+</body>
+</html>

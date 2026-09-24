@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>OpenRhythmOD</title>
+  <meta name="description" content="A tiny procedural rhythm-storybook game - tap to the beat, paint the story." />
+  <link rel="stylesheet" href="css/game.css" />
+</head>
+<body>
+  <main id="app">
+
+    <!-- MENU ------------------------------------------------------------->
+    <section id="screen-menu" class="screen">
+      <div class="panel panel--menu">
+        <h1 class="title">OpenRhythmOD</h1>
+        <p class="subtitle">A storybook that paints itself, one tap at a time.</p>
+        <p id="menu-progress" class="status-text"></p>
+        <p id="menu-calibration" class="status-text status-text--small"></p>
+
+        <div class="menu-actions">
+          <button id="btn-play" class="btn btn--primary" type="button">Play</button>
+          <button id="btn-calibrate" class="btn" type="button">Calibrate timing</button>
+          <label class="checkbox-row">
+            <input id="chk-lowend" type="checkbox" />
+            Low-end mode (smaller images, fewer paint layers)
+          </label>
+          <label class="checkbox-row">
+            <input id="chk-guides" type="checkbox" />
+            Tap guides (sound + visual "tap now" markers)
+          </label>
+        </div>
+
+        <details class="how-to">
+          <summary>How to play</summary>
+          <ul>
+            <li>Tap anywhere on the picture (or press any key) exactly on the beat.</li>
+            <li>Listen for the cue sound - it shows you what's coming and when to respond.</li>
+            <li>A good tap paints the story in and pops a sticker. A missed beat shows what
+              went wrong instead, but the story keeps going either way.</li>
+            <li>Keep your accuracy up across the whole song for the good ending.</li>
+            <li>First time playing? Run Calibrate once so tap timing matches your device -
+              you can Recalibrate anytime from the menu.</li>
+          </ul>
+          <p class="how-to__legend-title">The three corner marks on the picture:</p>
+          <ul>
+            <li><strong>Top-left circle</strong> - shows the glyph of whichever cue just sounded
+              (its name pops up briefly the first time you hear it this session).</li>
+            <li><strong>Top-right gold dot</strong> - a quiet metronome pulse, once per beat.</li>
+            <li><strong>Bottom-right emoji</strong> - the game's mascot: it pulses on cues,
+              cheers on a hit, shakes on a miss, and inflates during a hold.</li>
+          </ul>
+        </details>
+      </div>
+    </section>
+
+    <!-- CALIBRATE --------------------------------------------------------->
+    <section id="screen-calibrate" class="screen">
+      <div class="panel">
+        <h2>Calibrate your timing</h2>
+        <p id="calibrate-status" class="status-text">Tap along with the metronome.</p>
+        <p id="calibrate-detail" class="status-text status-text--small"></p>
+        <button id="btn-calibrate-begin" class="btn btn--primary" type="button">Start tapping</button>
+        <button id="calibrate-taparea" class="tap-circle" type="button" hidden>TAP</button>
+      </div>
+    </section>
+
+    <!-- PRACTICE ------------------------------------------------------------>
+    <section id="screen-practice" class="screen">
+      <div class="panel panel--practice">
+        <div class="practice-mascot" id="practice-mascot">🎵</div>
+        <h2 id="practice-title">Practice</h2>
+        <p id="practice-meaning" class="status-text"></p>
+        <div class="practice-timeline" id="practice-timeline">
+          <div class="practice-timeline__playhead" id="practice-playhead"></div>
+        </div>
+        <p id="practice-phase" class="practice-phase"></p>
+        <p id="practice-feedback" class="practice-feedback"></p>
+        <p id="practice-tally" class="practice-tally"></p>
+        <button id="practice-taparea" class="tap-circle" type="button">TAP</button>
+        <div class="menu-actions">
+          <button id="btn-practice-hear" class="btn" type="button">Hear it again</button>
+          <button id="btn-practice-continue" class="btn" type="button" hidden>Continue anyway</button>
+          <button id="btn-practice-skip" class="btn" type="button">Skip</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- LOADING ------------------------------------------------------------->
+    <section id="screen-loading" class="screen">
+      <div class="panel">
+        <h2>Getting ready&hellip;</h2>
+        <div class="progress-track">
+          <div id="loading-bar" class="progress-fill"></div>
+        </div>
+        <p id="loading-label" class="status-text">Composing the song&hellip;</p>
+      </div>
+    </section>
+
+    <!-- PLAY --------------------------------------------------------------->
+    <section id="screen-play" class="screen">
+      <div id="stage" class="stage"></div>
+      <!-- Shown when the player backgrounds the tab mid-song (js/pause.js /
+           js/main.js) - the whole overlay is one tap target. -->
+      <div id="pause-overlay" class="pause-overlay" hidden>
+        <button id="btn-resume" class="pause-overlay__button" type="button">
+          <span class="pause-overlay__title">Paused</span>
+          <span class="pause-overlay__hint">Tap to resume</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- END ------------------------------------------------------------------>
+    <section id="screen-end" class="screen">
+      <div class="panel panel--end">
+        <h2 id="end-title">The End</h2>
+        <div id="end-image" class="end-image"></div>
+        <p id="end-caption" class="end-caption"></p>
+        <p id="end-score" class="end-stat"></p>
+        <p id="end-counts" class="end-stat"></p>
+        <p id="end-timing" class="end-stat" hidden></p>
+        <p id="end-recalibrate" class="end-stat end-recalibrate" hidden></p>
+        <div class="menu-actions">
+          <button id="btn-end-recalibrate" class="btn" type="button" hidden>Recalibrate</button>
+        </div>
+        <div class="menu-actions">
+          <button id="btn-play-again" class="btn btn--primary" type="button">Play again (new seed)</button>
+          <button id="btn-replay-seed" class="btn" type="button">Replay this seed</button>
+          <button id="btn-end-menu" class="btn" type="button">Back to menu</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- DEBUG OVERLAY (?debug) ------------------------------------------------>
+  <div id="debug-overlay" hidden>
+    <div id="debug-stats">no taps yet</div>
+    <div id="debug-log"></div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
