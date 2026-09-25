@@ -11,30 +11,34 @@
 // URL/method/headers/body of every request, the refresh-timing decision,
 // and the error-message mapping, all with zero network dependency.
 
-import { SUPABASE_URL, SUPABASE_ANON_KEY, isConfigured } from '../config.js';
+import { SUPABASE_BASE_URL, SUPABASE_PUBLISHABLE_KEY, isConfigured } from '../config.js';
 import * as storage from '../storage.js';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
-/** Every auth/REST call sends `apikey: <anon key>` always, plus
- * `Authorization: Bearer <token>` - the current access token when signed
- * in, the anon key itself when not (this is the corrected behaviour from
- * the plan's headline: both auth endpoints and REST endpoints follow this
- * same rule). Exported/pure so tests can check the header shape directly. */
+/** Every auth/REST call sends `apikey: <publishable key>` always. Publishable
+ * keys are NOT JWTs (unlike the legacy anon key), so they never go in
+ * `Authorization` - that header carries a real user access token, and ONLY
+ * when one exists (i.e. signed in). Signed out, no Authorization header is
+ * sent at all - this is correct for both the new publishable/secret key
+ * system and (still) for a legacy anon key. Exported/pure so tests can
+ * check the header shape directly. */
 export function authHeaders(accessToken) {
-  return {
-    apikey: SUPABASE_ANON_KEY,
-    Authorization: `Bearer ${accessToken || SUPABASE_ANON_KEY}`,
-  };
+  const headers = { apikey: SUPABASE_PUBLISHABLE_KEY };
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  return headers;
 }
 
 // --- pure request builders (URL/method/headers/body only - no fetch) ------
+// None of these carry a user access token (no session exists yet at the
+// point they're called), so `authHeaders()` with no argument is correct for
+// all of them - apikey only, no Authorization.
 
 export function buildOtpRequest(email) {
   return {
-    url: `${SUPABASE_URL}/auth/v1/otp`,
+    url: `${SUPABASE_BASE_URL}/auth/v1/otp`,
     method: 'POST',
-    headers: { ...JSON_HEADERS, apikey: SUPABASE_ANON_KEY },
+    headers: { ...JSON_HEADERS, ...authHeaders() },
     body: JSON.stringify({ email, create_user: true }),
   };
 }
@@ -43,7 +47,7 @@ export function buildVerifyRequest(email, token) {
   return {
     url: `${SUPABASE_URL}/auth/v1/verify`,
     method: 'POST',
-    headers: { ...JSON_HEADERS, apikey: SUPABASE_ANON_KEY },
+    headers: { ...JSON_HEADERS, ...authHeaders() },
     body: JSON.stringify({ type: 'email', email, token }),
   };
 }
@@ -52,7 +56,7 @@ export function buildSignupRequest(email, password) {
   return {
     url: `${SUPABASE_URL}/auth/v1/signup`,
     method: 'POST',
-    headers: { ...JSON_HEADERS, apikey: SUPABASE_ANON_KEY },
+    headers: { ...JSON_HEADERS, ...authHeaders() },
     body: JSON.stringify({ email, password }),
   };
 }
@@ -61,7 +65,7 @@ export function buildPasswordSignInRequest(email, password) {
   return {
     url: `${SUPABASE_URL}/auth/v1/token?grant_type=password`,
     method: 'POST',
-    headers: { ...JSON_HEADERS, apikey: SUPABASE_ANON_KEY },
+    headers: { ...JSON_HEADERS, ...authHeaders() },
     body: JSON.stringify({ email, password }),
   };
 }
@@ -70,7 +74,7 @@ export function buildRefreshRequest(refreshToken) {
   return {
     url: `${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`,
     method: 'POST',
-    headers: { ...JSON_HEADERS, apikey: SUPABASE_ANON_KEY },
+    headers: { ...JSON_HEADERS, ...authHeaders() },
     body: JSON.stringify({ refresh_token: refreshToken }),
   };
 }

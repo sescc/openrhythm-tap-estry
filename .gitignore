@@ -15,3 +15,6 @@ desktop.ini
 
 # Local scratch file for commit messages
 commit-msg.txt
+
+# Paused work-in-progress patches (not part of the game)
+.wip/

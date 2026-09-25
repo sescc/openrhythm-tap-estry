@@ -24,7 +24,7 @@ import {
   mapAuthError,
 } from '../js/net/auth.js';
 import { buildPlaysInsertRequest } from '../js/net/sync.js';
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../js/config.js';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, looksSecretKey } from '../js/config.js';
 
 let failures = 0;
 function assert(cond, msg) {
@@ -35,16 +35,20 @@ function assert(cond, msg) {
 }
 
 // --- request builders: URL, method, headers, body --------------------------
-// js/config.js ships with empty SUPABASE_URL/SUPABASE_ANON_KEY by default
-// (guest-only until a real project is configured - see README "Setting up
-// accounts") - these checks only rely on the builders using whatever
-// js/config.js currently exports, not on a real project being configured.
+// js/config.js ships with empty SUPABASE_URL/SUPABASE_PUBLISHABLE_KEY by
+// default (guest-only until a real project is configured - see README
+// "Setting up accounts") - these checks only rely on the builders using
+// whatever js/config.js currently exports, not on a real project being
+// configured. None of the pre-auth builders below carry a user token (no
+// session exists yet), so each must send `apikey` and NO `Authorization`
+// header at all - publishable keys are not JWTs and never belong in Bearer.
 
 {
   const req = buildOtpRequest('player@example.com');
   assert(req.url === `${SUPABASE_URL}/auth/v1/otp`, `buildOtpRequest: wrong url ${req.url}`);
   assert(req.method === 'POST', 'buildOtpRequest: should POST');
-  assert(req.headers.apikey === SUPABASE_ANON_KEY, 'buildOtpRequest: apikey header should be the anon key');
+  assert(req.headers.apikey === SUPABASE_PUBLISHABLE_KEY, 'buildOtpRequest: apikey header should be the publishable key');
+  assert(!('Authorization' in req.headers), 'buildOtpRequest: should send NO Authorization header (no session exists yet)');
   assert(req.headers['Content-Type'] === 'application/json', 'buildOtpRequest: should send JSON');
   const body = JSON.parse(req.body);
   assert(body.email === 'player@example.com' && body.create_user === true, `buildOtpRequest: wrong body ${req.body}`);
@@ -54,6 +58,7 @@ function assert(cond, msg) {
   const req = buildVerifyRequest('player@example.com', '123456');
   assert(req.url === `${SUPABASE_URL}/auth/v1/verify`, `buildVerifyRequest: wrong url ${req.url}`);
   assert(req.method === 'POST', 'buildVerifyRequest: should POST');
+  assert(!('Authorization' in req.headers), 'buildVerifyRequest: should send NO Authorization header (no session exists yet)');
   const body = JSON.parse(req.body);
   assert(body.type === 'email' && body.email === 'player@example.com' && body.token === '123456', `buildVerifyRequest: wrong body ${req.body}`);
 }
@@ -61,6 +66,7 @@ function assert(cond, msg) {
 {
   const req = buildSignupRequest('player@example.com', 'hunter22');
   assert(req.url === `${SUPABASE_URL}/auth/v1/signup`, `buildSignupRequest: wrong url ${req.url}`);
+  assert(!('Authorization' in req.headers), 'buildSignupRequest: should send NO Authorization header (no session exists yet)');
   const body = JSON.parse(req.body);
   assert(body.email === 'player@example.com' && body.password === 'hunter22', `buildSignupRequest: wrong body ${req.body}`);
 }
@@ -68,6 +74,7 @@ function assert(cond, msg) {
 {
   const req = buildPasswordSignInRequest('player@example.com', 'hunter22');
   assert(req.url === `${SUPABASE_URL}/auth/v1/token?grant_type=password`, `buildPasswordSignInRequest: wrong url ${req.url}`);
+  assert(!('Authorization' in req.headers), 'buildPasswordSignInRequest: should send NO Authorization header (no session exists yet)');
   const body = JSON.parse(req.body);
   assert(body.email === 'player@example.com' && body.password === 'hunter22', `buildPasswordSignInRequest: wrong body ${req.body}`);
 }
@@ -75,6 +82,7 @@ function assert(cond, msg) {
 {
   const req = buildRefreshRequest('refresh-token-abc');
   assert(req.url === `${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, `buildRefreshRequest: wrong url ${req.url}`);
+  assert(!('Authorization' in req.headers), 'buildRefreshRequest: should send NO Authorization header (the refresh token travels in the BODY, not as a bearer)');
   const body = JSON.parse(req.body);
   assert(body.refresh_token === 'refresh-token-abc', `buildRefreshRequest: wrong body ${req.body}`);
 }
@@ -84,7 +92,7 @@ function assert(cond, msg) {
   assert(req.url === `${SUPABASE_URL}/auth/v1/user`, `buildSetPasswordRequest: wrong url ${req.url}`);
   assert(req.method === 'PUT', 'buildSetPasswordRequest: should PUT');
   assert(req.headers.Authorization === 'Bearer access-token-xyz', `buildSetPasswordRequest: wrong Authorization header ${req.headers.Authorization}`);
-  assert(req.headers.apikey === SUPABASE_ANON_KEY, 'buildSetPasswordRequest: apikey header should still be the anon key');
+  assert(req.headers.apikey === SUPABASE_PUBLISHABLE_KEY, 'buildSetPasswordRequest: apikey header should still be the publishable key');
   const body = JSON.parse(req.body);
   assert(body.password === 'newpassword1', `buildSetPasswordRequest: wrong body ${req.body}`);
 }
@@ -93,6 +101,7 @@ function assert(cond, msg) {
   const req = buildLogoutRequest('access-token-xyz');
   assert(req.url === `${SUPABASE_URL}/auth/v1/logout`, `buildLogoutRequest: wrong url ${req.url}`);
   assert(req.method === 'POST', 'buildLogoutRequest: should POST');
+  assert(req.headers.apikey === SUPABASE_PUBLISHABLE_KEY, 'buildLogoutRequest: apikey header should be the publishable key');
   assert(req.headers.Authorization === 'Bearer access-token-xyz', 'buildLogoutRequest: wrong Authorization header');
 }
 
@@ -118,18 +127,50 @@ function assert(cond, msg) {
   assert(Array.isArray(body) && body.length === 1 && body[0].client_id === 'c1', `buildPlaysInsertRequest: wrong body ${req.body}`);
 }
 
-// --- authHeaders: signed-in vs signed-out (anon key fallback) -------------
+// --- authHeaders: signed-in vs signed-out ----------------------------------
+// Publishable keys are NOT JWTs, so they never belong in Authorization: it
+// carries a real user access token, and only when one exists.
 
 {
   const signedIn = authHeaders('real-access-token');
-  assert(signedIn.apikey === SUPABASE_ANON_KEY, 'authHeaders: apikey should always be the anon key');
+  assert(signedIn.apikey === SUPABASE_PUBLISHABLE_KEY, 'authHeaders: apikey should always be the publishable key');
   assert(signedIn.Authorization === 'Bearer real-access-token', 'authHeaders: should use the access token when signed in');
 
-  const signedOut = authHeaders(null);
-  assert(signedOut.Authorization === `Bearer ${SUPABASE_ANON_KEY}`, 'authHeaders: should fall back to the anon key as the bearer token when signed out');
+  const signedOutNull = authHeaders(null);
+  assert(signedOutNull.apikey === SUPABASE_PUBLISHABLE_KEY, 'authHeaders: apikey should still be sent when signed out');
+  assert(!('Authorization' in signedOutNull), 'authHeaders: signed out (null token) should send NO Authorization header at all');
 
-  const undefinedToken = authHeaders(undefined);
-  assert(undefinedToken.Authorization === `Bearer ${SUPABASE_ANON_KEY}`, 'authHeaders: undefined token should also fall back to the anon key');
+  const signedOutUndefined = authHeaders(undefined);
+  assert(!('Authorization' in signedOutUndefined), 'authHeaders: signed out (undefined token) should send NO Authorization header at all');
+
+  const signedOutNoArg = authHeaders();
+  assert(!('Authorization' in signedOutNoArg), 'authHeaders: no argument at all should also send NO Authorization header');
+
+  const signedOutEmptyString = authHeaders('');
+  assert(!('Authorization' in signedOutEmptyString), 'authHeaders: an empty-string token should be treated as signed-out, not sent as "Bearer "');
+}
+
+// --- looksSecretKey / isConfigured: a secret key must never be used --------
+// (coordinator review: Supabase's new key system issues `sb_publishable_...`
+// keys for the browser and `sb_secret_...` keys that must stay server-side
+// only; a legacy project still has an `anon` JWT (safe, public) and a
+// `service_role` JWT (secret) with the same distinction.)
+
+function fakeJwt(payload) {
+  const seg = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+  return `${seg({ alg: 'HS256', typ: 'JWT' })}.${seg(payload)}.fakesignature`;
+}
+
+{
+  assert(looksSecretKey('sb_secret_abcdef123456') === true, 'looksSecretKey: a new-style sb_secret_ key should be flagged');
+  assert(looksSecretKey('sb_publishable_abcdef123456') === false, 'looksSecretKey: a new-style sb_publishable_ key should NOT be flagged');
+  assert(looksSecretKey(fakeJwt({ role: 'service_role', iss: 'supabase' })) === true, 'looksSecretKey: a legacy service_role JWT should be flagged');
+  assert(looksSecretKey(fakeJwt({ role: 'anon', iss: 'supabase' })) === false, 'looksSecretKey: a legacy anon JWT should NOT be flagged (it still works)');
+  assert(looksSecretKey('') === false, 'looksSecretKey: empty string should not be flagged (that is just "unconfigured")');
+  assert(looksSecretKey(null) === false, 'looksSecretKey: null should not be flagged');
+  assert(looksSecretKey('not-a-jwt-and-no-known-prefix') === false, 'looksSecretKey: an unrecognised string should not be flagged (fails open to "not obviously secret", not a false positive)');
+  assert(looksSecretKey('a.b') === false, 'looksSecretKey: a 2-segment (non-JWT) string should not throw or be flagged');
+  assert(looksSecretKey('not-json.not-json-either.sig') === false, 'looksSecretKey: an undecodable 3-segment string should not throw or be flagged');
 }
 
 // --- needsRefresh: the "within 60s of expiry" decision --------------------

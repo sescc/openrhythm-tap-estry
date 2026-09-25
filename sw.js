@@ -7,7 +7,7 @@
 // VERSION changes this file's bytes, which is what makes browsers install
 // the new version on the next visit.
 
-const VERSION = '87220dbe4bbc'; // stamp:version
+const VERSION = 'a9732f3a8531'; // stamp:version
 const ASSETS = [
   './',
   'index.html',

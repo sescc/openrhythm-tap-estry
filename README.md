@@ -103,10 +103,11 @@ registered on `localhost` (so a dev server never serves stale files); add
 ## Setting up accounts (Supabase)
 
 Accounts and cross-device progress (section C) are **optional** - with
-`js/config.js` left as-is (empty `SUPABASE_URL`/`SUPABASE_ANON_KEY`), every
-account UI shows "Accounts not set up" and the game works exactly as it did
-before this feature existed: guest play, local-only progress. Everything
-below is only needed if you want sign-in + synced progress to actually work.
+`js/config.js` left as-is (empty `SUPABASE_URL`/`SUPABASE_PUBLISHABLE_KEY`),
+every account UI shows "Accounts not set up" and the game works exactly as
+it did before this feature existed: guest play, local-only progress.
+Everything below is only needed if you want sign-in + synced progress to
+actually work.
 
 1. **Create a free Supabase project** at [supabase.com](https://supabase.com).
 2. **In Auth > Providers > Email:**
@@ -138,23 +139,46 @@ below is only needed if you want sign-in + synced progress to actually work.
 6. **Set the Site URL** (Auth > URL Configuration) to your GitHub Pages URL,
    and **add `http://localhost:8080` as an additional redirect URL** for
    local testing.
-7. **Run `supabase/schema.sql`** once in the SQL editor (Database > SQL
-   Editor > New query, paste, Run). It creates `profiles`, `progress` and
-   `plays` with row-level security enabled on all three (every policy scoped
-   to `auth.uid()`), plus the triggers that create a `profiles` row on
-   sign-up and keep `updated_at` current. It's written to be safe to re-run.
-8. **Paste the project URL and anon key into `js/config.js`** (Project
-   Settings > API in the dashboard):
+7. **Run the schema.** In your clone of this repo, open
+   **`supabase/schema.sql`** (that's `<your clone>/supabase/schema.sql`) and
+   copy its entire contents. In the Supabase dashboard, go to
+   **SQL Editor > New query**, paste it in, and click **Run**. You should
+   see "Success. No rows returned". Then check **Table Editor** in the
+   sidebar and confirm `profiles`, `progress` and `plays` all appear in the
+   table list. It's written to be safe to re-run (creates tables/policies
+   only if they don't already exist).
+8. **Paste the project URL and key into `js/config.js`.**
+   - **Project URL**: this is the *API* URL, `https://<project-ref>.supabase.co`
+     - **not** the dashboard URL you're looking at, and **not** your GitHub
+     Pages URL. The `<project-ref>` is the id shown in the dashboard's own
+     address bar, `supabase.com/dashboard/project/<project-ref>`. You can
+     also find the full API URL under **Project Settings > Data API**, or by
+     clicking the **Connect** button near the top of the dashboard.
+   - **Key**: go to **Project Settings > API Keys** and copy the
+     **Publishable key** (starts with `sb_publishable_...`). **Never** use
+     the **Secret key** (`sb_secret_...`) or a legacy **`service_role`**
+     key here - `isConfigured()` in `js/config.js` actively refuses either
+     one (logs a console error and treats the app as unconfigured), because
+     a secret key must never ship to a browser. If your project only has the
+     older-style keys, the legacy **`anon`** key (a JWT starting `eyJ...`,
+     under "Legacy anon, service_role API keys") still works fine here too.
+
+   The result is two lines in `js/config.js`:
 
    ```js
-   export const SUPABASE_URL = 'https://xxxxxxxx.supabase.co';
-   export const SUPABASE_ANON_KEY = 'eyJ...'; // the "anon" / "public" key, NOT the service_role key
+   export const SUPABASE_URL = 'https://abcdefghijklmno.supabase.co';
+   export const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_AbCdEfGhIjKlMnOpQrStUv';
    ```
 
-   The anon key is **public by design** - it ships in the client bundle for
+   This key is **public by design** - it ships in the client bundle for
    every Supabase project, and row-level security (not key secrecy) is what
-   actually protects the data. Never put the `service_role` key anywhere in
-   client code.
+   actually protects the data (see `supabase/schema.sql`'s policies).
+9. **Test it.** Run the site locally (see "Running locally" above), open the
+   menu, and click the account chip (**"Guest · Sign in"**). Enter an email
+   and click **Send code** - a 6-digit code should arrive in that inbox
+   within a minute or two (longer, and subject to a low hourly cap, if you
+   skipped the custom SMTP step). Enter the code and click **Verify** to
+   confirm sign-in works end to end.
 
 **Free-tier note:** a Supabase free project **pauses after about 7 days of
 inactivity**. One click ("Restore") in the dashboard brings it back - just
