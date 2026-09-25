@@ -17,8 +17,10 @@ import { createStage } from './render/stage.js';
 import { detectLowEnd, getBudget } from './assets.js';
 import { attachAutoPause } from './pause.js';
 import { pairTapsToClicks, isCountInTap, computeCalibration, computeVerifyResiduals, VERIFY_TAPS, CAL_BPM, COUNT_IN_BEATS, VERIFY_COUNT_IN_BEATS } from './calibration.js';
+import { practiceRoundOutcome } from './practice.js';
 import * as storage from './storage.js';
 import { GAMES, REMIX, getGame, pickNextGame, isRemixTurn } from './games/index.js';
+import * as accountUi from './net/accountUi.js';
 
 storage.migrateIfNeeded(); // M1.6: wipe a possibly-corrupt calibration + reset progress once
 
@@ -68,12 +70,19 @@ const screens = {
   loading: document.getElementById('screen-loading'),
   play: document.getElementById('screen-play'),
   end: document.getElementById('screen-end'),
+  account: document.getElementById('screen-account'), // section C
+  progress: document.getElementById('screen-progress'), // section C
 };
 function showScreen(name) {
   for (const key in screens) {
     screens[key].classList.toggle('screen--active', key === name);
   }
+  // Section C: pull+merge cloud progress and flush any queued offline plays
+  // every time the menu is shown (fire-and-forget inside accountUi - never
+  // blocks the menu itself, and a no-op whenever unconfigured/signed-out).
+  if (name === 'menu') accountUi.onMenuShown();
 }
+accountUi.init({ showScreen }); // section C - wires the account chip + #screen-account/#screen-progress
 
 // --- debug overlay ---------------------------------------------------------
 const debugOverlay = document.getElementById('debug-overlay');
@@ -93,6 +102,45 @@ function medianOf(arr) {
   const sorted = arr.slice().sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/** 'doubleChirp' -> 'Double Chirp', 'readygoSlow' -> 'Readygo Slow'. Used by
+ * the miss breakdown (section M1.8) for a display label per cue type - a
+ * small local copy of js/render/stage.js's own prettifyCueId() rather than
+ * exporting/importing it, since stage.js is a leaf module another task is
+ * about to restructure and this is a 3-line pure function. */
+function prettifyCueId(cueId) {
+  const spaced = cueId.replace(/([a-z])([A-Z])/g, '$1 $2');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/** Resolves once the page is both visible (!document.hidden) and focused
+ * (document.hasFocus()), or once `shouldAbort()` returns true - whichever
+ * comes first. Mirrors js/story/loader.js's onceVisible() (a
+ * visibilitychange listener that resolves once the condition holds,
+ * removed on resolve either way so nothing leaks) - extended with a
+ * window 'focus' listener, since a tab can be visible but unfocused
+ * (background window, OS focus elsewhere) while still not "actually back".
+ * Used by practiceAttemptRound's 'interrupted' retry (section M1.8.1):
+ * without a focus check too, a backgrounded practice round would keep
+ * re-triggering itself (and its audio) the instant the tab merely becomes
+ * visible again, before the player has actually returned to it. Never
+ * times out on its own - like loader.js's version, it's meant to sit here
+ * indefinitely if the player stays away; `shouldAbort` is what lets a
+ * caller (Skip/Continue) get out of it early. */
+function waitForVisibleAndFocused(shouldAbort) {
+  const satisfied = () => shouldAbort?.() || (!document.hidden && document.hasFocus());
+  if (satisfied()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const check = () => {
+      if (!satisfied()) return;
+      document.removeEventListener('visibilitychange', check);
+      window.removeEventListener('focus', check);
+      resolve();
+    };
+    document.addEventListener('visibilitychange', check);
+    window.addEventListener('focus', check);
+  });
 }
 
 function updateDebugStats(offsets, ignoredCount, allSignedOffsets) {
@@ -557,7 +605,6 @@ async function startRun(explicitSeed) {
 // gets immediate direction+ms feedback.
 const PRACTICE_ROUNDS_MAX = 3;
 const PRACTICE_ROUNDS_TO_PASS = 2;
-const PRACTICE_PASS_RATIO = 0.7; // matches the real game's own clear threshold
 
 function maybeStartPractice(runCtx) {
   const { game } = runCtx;
@@ -595,6 +642,7 @@ function practiceEls() {
     legendFakeEl: document.getElementById('practice-legend-fake'),
     hearBtn: document.getElementById('btn-practice-hear'),
     continueBtn: document.getElementById('btn-practice-continue'),
+    tryAgainBtn: document.getElementById('btn-practice-tryagain'),
     skipBtn: document.getElementById('btn-practice-skip'),
   };
 }
@@ -614,6 +662,16 @@ function stopAllPracticeAudio() {
   activePracticeStops.clear();
 }
 
+// M1.8: after a cue's rounds finish (pass OR fail - previously the "keep
+// going" prompt only ever showed on a fail, and a pass silently jumped to
+// the next cue with no way back), the player picks Try again (full reset:
+// a fresh Listen + a fresh set of rounds for this SAME cue), Continue (the
+// next cue, or Play) or Skip (unchanged). "Hear it again" no longer just
+// replays the demo and leaves the player stuck - it plays the demo and then
+// immediately attempts one more scored round, counted the same as any
+// other (see runBonusRound below); it stays disabled during a scored round
+// exactly as before (practiceAttemptRound's own hearBtn.disabled toggle,
+// untouched).
 async function runPracticeSteps(runCtx, steps, i) {
   if (i >= steps.length) {
     startPlay(runCtx);
@@ -631,50 +689,123 @@ async function runPracticeSteps(runCtx, steps, i) {
   els.meaningEl.textContent = cueInfo ? `${cueInfo.glyph ? cueInfo.glyph + ' ' : ''}${step.caption || cueInfo.meaning}` : step.caption || '';
   els.tallyEl.textContent = '';
   els.continueBtn.hidden = true;
-  els.hearBtn.onclick = () => {
-    stopAllPracticeAudio();
-    practiceListen(runCtx, section, els);
-  };
+  els.tryAgainBtn.hidden = true;
 
   let skipped = false;
+  let advanced = false; // true once Continue/Skip has committed past this step - guards late callbacks
+  let round = 0;
+  let passed = 0;
+
+  function updateTally() {
+    els.tallyEl.textContent = `Round ${round} of ${PRACTICE_ROUNDS_MAX} - ${passed} passed`;
+  }
+
+  function hideResultsPrompt() {
+    els.continueBtn.hidden = true;
+    els.tryAgainBtn.hidden = true;
+  }
+
+  function showResultsPrompt() {
+    els.phaseEl.textContent = passed >= PRACTICE_ROUNDS_TO_PASS ? "Nice - you've got it!" : "Still getting the hang of it - that's okay.";
+    els.continueBtn.hidden = false;
+    els.tryAgainBtn.hidden = false;
+  }
+
   const finishSkip = () => {
+    if (skipped || advanced) return;
     skipped = true;
+    advanced = true;
+    hideResultsPrompt();
     stopAllPracticeAudio();
     storage.markCuePracticed(game.id, step.cueId);
     startPlay(runCtx);
   };
   els.skipBtn.onclick = finishSkip;
 
-  await practiceListen(runCtx, section, els);
-  if (skipped) return;
+  els.continueBtn.onclick = () => {
+    if (skipped || advanced) return;
+    advanced = true;
+    hideResultsPrompt();
+    storage.markCuePracticed(game.id, step.cueId);
+    runPracticeSteps(runCtx, steps, i + 1);
+  };
 
-  let passed = 0;
-  let round = 0;
-  while (round < PRACTICE_ROUNDS_MAX && passed < PRACTICE_ROUNDS_TO_PASS && !skipped) {
+  els.tryAgainBtn.onclick = () => {
+    if (skipped || advanced) return;
+    hideResultsPrompt();
+    stopAllPracticeAudio();
+    round = 0;
+    passed = 0;
+    els.tallyEl.textContent = '';
+    runFullAttempt();
+  };
+
+  els.hearBtn.onclick = () => {
+    if (skipped || advanced) return;
+    hideResultsPrompt();
+    stopAllPracticeAudio();
+    runBonusRound();
+  };
+
+  // A round came back 'interrupted' (backgrounded mid-round). Re-running it
+  // immediately would just get interrupted again for as long as the tab
+  // stays hidden - an endless loop that keeps playing practice audio in
+  // the background. Instead: say so, wait for the page to be genuinely
+  // back (visible AND focused - see waitForVisibleAndFocused), then a
+  // short settle beat before actually restarting. Skip/Continue during any
+  // of this still work - both are checked again right after.
+  async function waitOutInterruption() {
+    els.phaseEl.textContent = "Paused - come back to continue";
+    await waitForVisibleAndFocused(() => skipped || advanced);
+    if (skipped || advanced) return;
+    await sleep(400);
+  }
+
+  // "Hear it again", or the very first entry into this cue: one demo, then
+  // ONE scored round, tallied like any other - if that round didn't reach
+  // the pass/fail threshold on its own the player can just click it again.
+  // An 'interrupted' round (backgrounded mid-round - see
+  // practiceAttemptRound/js/practice.js) doesn't count at all - it's simply
+  // re-run, same as runFullAttempt's own loop does below.
+  async function runBonusRound() {
+    await practiceListen(runCtx, section, els);
+    if (skipped || advanced) return;
+    let outcome = await practiceAttemptRound(runCtx, section, els);
+    while (outcome === 'interrupted') {
+      await waitOutInterruption();
+      if (skipped || advanced) return;
+      outcome = await practiceAttemptRound(runCtx, section, els);
+    }
+    if (skipped || advanced) return;
     round++;
-    const outcome = await practiceAttemptRound(runCtx, section, els, round);
-    if (skipped) return;
     if (outcome === 'pass') passed++;
-    els.tallyEl.textContent = `Round ${round} of ${PRACTICE_ROUNDS_MAX} - ${passed} passed`;
-  }
-  if (skipped) return;
-
-  if (passed < PRACTICE_ROUNDS_TO_PASS) {
-    const proceed = await new Promise((resolve) => {
-      els.phaseEl.textContent = "Still getting the hang of it - that's okay.";
-      els.continueBtn.hidden = false;
-      els.continueBtn.onclick = () => resolve(true);
-      els.skipBtn.onclick = () => {
-        finishSkip();
-        resolve(false);
-      };
-    });
-    els.continueBtn.hidden = true;
-    if (!proceed) return;
+    updateTally();
+    showResultsPrompt();
   }
 
-  storage.markCuePracticed(game.id, step.cueId);
-  runPracticeSteps(runCtx, steps, i + 1);
+  // The normal path: one demo, then automatic rounds up to
+  // PRACTICE_ROUNDS_MAX (stopping early once PRACTICE_ROUNDS_TO_PASS is
+  // reached), then the results prompt.
+  async function runFullAttempt() {
+    await practiceListen(runCtx, section, els);
+    if (skipped || advanced) return;
+    while (round < PRACTICE_ROUNDS_MAX && passed < PRACTICE_ROUNDS_TO_PASS && !skipped && !advanced) {
+      const outcome = await practiceAttemptRound(runCtx, section, els);
+      if (skipped || advanced) return;
+      if (outcome === 'interrupted') {
+        await waitOutInterruption();
+        if (skipped || advanced) return;
+        continue; // re-run the SAME round - doesn't count against the limit
+      }
+      round++;
+      if (outcome === 'pass') passed++;
+      updateTally();
+    }
+    if (skipped || advanced) return;
+    showResultsPrompt();
+  }
+
+  runFullAttempt();
 }
 
 // Practice's own count-in (separate from calibration's - different tempo,
@@ -925,15 +1056,17 @@ function practiceListen(runCtx, section, els) {
  * the section's own notes, with per-tap direction+ms feedback, per-dot
  * hit/miss colouring, and a timeline playhead (both offset by the stored
  * calibration the same way the real Play screen's guides are - see
- * js/render/stage.js tick()). Resolves 'pass' or 'fail' (>=70% good+ =
- * pass, same bar the real game clears at). "Hear it again" is disabled for
- * the round's whole duration (restored in stopThis regardless of how the
- * round ends): a replay stopping THIS round's own rAF/input via the shared
- * activePracticeStops set would silently zero out tally.total, which
- * "passed = tally.total > 0 ? ... : true" would then count as an automatic
- * pass. All sfx this round schedules (count-in, guide ticks, live response
- * hits) route through one GainNode (`bus`) the same way practiceListen's
- * does, so Skip mid-round silences everything at once. */
+ * js/render/stage.js tick()). Resolves 'pass' / 'fail' / 'interrupted' via
+ * js/practice.js practiceRoundOutcome() - see that module for the exact
+ * rule (>=70% good+ = pass; a round the tab was backgrounded during is
+ * 'interrupted', never counted, and the caller re-runs it - see
+ * runPracticeSteps). "Hear it again" is disabled for the round's whole
+ * duration (restored in stopThis regardless of how the round ends): a
+ * replay stopping THIS round's own rAF/input via the shared
+ * activePracticeStops set would otherwise zero out tally.total. All sfx
+ * this round schedules (count-in, guide ticks, live response hits) route
+ * through one GainNode (`bus`) the same way practiceListen's does, so Skip
+ * mid-round silences everything at once. */
 function practiceAttemptRound(runCtx, section, els) {
   // Stop any leftover Listen replay first - see practiceListen's own
   // comment above. "Hear it again" is disabled for the rest of THIS
@@ -1031,6 +1164,25 @@ function practiceAttemptRound(runCtx, section, els) {
     });
     const detach = attachInput(els.tapArea, judge.judgeTap, judge.judgeRelease);
 
+    // If the tab gets backgrounded mid-round, rAF stops ticking (see
+    // js/main.js's Play-screen pause/js/pause.js for the same underlying
+    // browser behaviour) - judge.update() then never runs, so nothing
+    // auto-misses, tally.total can stay 0, and the round used to silently
+    // read as a pass. Rather than pull in js/pause.js's full pause-overlay
+    // flow (built for the Play screen's own UX, not a fit here), this just
+    // flags the round as 'interrupted' so runPracticeSteps re-runs it -
+    // never a pass or a fail. Starts from document.hidden in case the tab
+    // was ALREADY hidden the instant this round began.
+    let interrupted = document.hidden;
+    const markInterrupted = () => {
+      interrupted = true;
+    };
+    const handleVisibility = () => {
+      if (document.hidden) markInterrupted();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('blur', markInterrupted);
+
     // +Math.max(0, calibrationOffsetSec): judge.update()'s own auto-miss
     // sweep now resolves each note at heard-time note.time+offset+
     // MISS_WINDOW (see js/input.js) - without extending endAt to match, a
@@ -1055,6 +1207,8 @@ function practiceAttemptRound(runCtx, section, els) {
       done = true;
       activePracticeStops.delete(stopThis);
       for (const id of countInTimers) clearTimeout(id);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('blur', markInterrupted);
       detach();
       cancelAnimationFrame(rafId);
       try {
@@ -1073,9 +1227,15 @@ function practiceAttemptRound(runCtx, section, els) {
 
     setTimeout(
       () => {
+        // Force-resolve every note regardless of whether rAF ticked this
+        // round (a large margin past endAt, comfortably past MISS_WINDOW +
+        // any calibration offset) - the same root cause as the interrupted
+        // check above: no rAF means judge.update() never ran, so a note
+        // could still be sitting unjudged (and out of tally.total) right
+        // here without this.
+        judge.update(endAt + 1);
         stopThis();
-        const passed = tally.total > 0 ? tally.good / tally.total >= PRACTICE_PASS_RATIO : true;
-        resolve(passed ? 'pass' : 'fail');
+        resolve(practiceRoundOutcome({ good: tally.good, total: tally.total, interrupted }));
       },
       (endAt - ctx.currentTime) * 1000
     );
@@ -1150,6 +1310,47 @@ function startPlay(runCtx) {
   const allSignedOffsets = [];
   debugLog.innerHTML = '';
   debugStats.textContent = '';
+
+  // M1.8 miss breakdown: "which rhythms are unreadable" - split every MISS
+  // into no-tap (auto-missed, nothing nearby) / too-early / too-late, and
+  // tally per cue type. Allocation-free on the tap path: counters and a
+  // couple of small Maps only, updated per judge event - every string is
+  // built once, at song end (see finishPlay's buildMissLines()).
+  const missBreakdown = { noTap: 0, tooEarly: 0, tooLate: 0 };
+  const cueMissTotals = new Map(); // `${srcGame}:${cueId}` -> {total, missed, glyph, label}
+  // A note only ever gets a real judged offset when an ACTIVE tap resolves
+  // it (a bonked fake, or a badly-timed hold release - see js/input.js).
+  // A plain tap-note can only ever be miss-judged via the auto-miss sweep
+  // (source:'auto', offsetMs:null - no active tap ever came close enough to
+  // even be judged against it) - which alone can't distinguish "the player
+  // never went for it" from "the player reached for it and just missed the
+  // window". This tracks the closest IGNORED tap seen near each note (see
+  // onJudged's 'ignored' branch) so an auto-missed note the player clearly
+  // attempted still reads as too-early/too-late rather than no-tap.
+  const ATTEMPT_WINDOW_MS = 300;
+  const attemptedDelta = new Map(); // note -> closest signed deltaMs seen for it
+
+  function cueEntryFor(note) {
+    const key = `${note.srcGame || chart.gameId}:${note.cueId}`;
+    let entry = cueMissTotals.get(key);
+    if (!entry) {
+      const info = resolveCueType(note.srcGame, note.cueId);
+      entry = { total: 0, missed: 0, glyph: info?.glyph || '', label: prettifyCueId(note.cueId) };
+      cueMissTotals.set(key, entry);
+    }
+    return entry;
+  }
+
+  /** Sorted worst-first (most misses, ties broken by miss ratio), only cue
+   * types with >=1 miss - built once, at song end, never on the tap path. */
+  function buildCueMissLines() {
+    const rows = [];
+    for (const entry of cueMissTotals.values()) {
+      if (entry.missed > 0) rows.push(entry);
+    }
+    rows.sort((a, b) => b.missed - a.missed || b.missed / b.total - a.missed / a.total);
+    return rows.map((e) => `${e.glyph ? e.glyph + ' ' : ''}${e.label}: ${e.missed} of ${e.total} missed`);
+  }
 
   // --- backgrounding (visibilitychange/blur/pagehide) --------------------
   // See js/pause.js + js/songform.js planPauseResume() for the mechanics;
@@ -1265,6 +1466,16 @@ function startPlay(runCtx) {
         const dir = evt.deltaMs >= 0 ? 'LATE' : 'EARLY';
         const noteNum = evt.nearestIndex >= 0 ? evt.nearestIndex + 1 : '?';
         pushDebugRow(`ignored ${evt.deltaMs >= 0 ? '+' : ''}${evt.deltaMs.toFixed(0)}ms ${dir} (nearest note #${noteNum}) (${evt.source})`);
+        // Miss breakdown: remember the closest attempt near this note, in
+        // case it ends up auto-missed with no active tap ever resolving it
+        // (see attemptedDelta's own comment above) - a single Map
+        // set/overwrite, no allocation beyond that.
+        if (evt.nearestNote && Math.abs(evt.deltaMs) <= ATTEMPT_WINDOW_MS) {
+          const prev = attemptedDelta.get(evt.nearestNote);
+          if (prev == null || Math.abs(evt.deltaMs) < Math.abs(prev)) {
+            attemptedDelta.set(evt.nearestNote, evt.deltaMs);
+          }
+        }
       } else {
         pushDebugRow(`ignored tap @ ${evt.tapTime.toFixed(3)}s (${evt.source})`);
       }
@@ -1296,6 +1507,21 @@ function startPlay(runCtx) {
     counts[judgement] = (counts[judgement] || 0) + 1;
     if (judgement === 'perfect') score += 100;
     else if (judgement === 'good' || judgement === 'avoided') score += 50;
+
+    // Miss breakdown (M1.8): every FINAL judgement of this note's cue type
+    // counts toward that cue's total (the "of N" denominator), and a miss
+    // is further classified no-tap / too-early / too-late.
+    const cueEntry = cueEntryFor(note);
+    cueEntry.total++;
+    if (judgement === 'miss') {
+      cueEntry.missed++;
+      let attemptMs = null;
+      if (source !== 'auto' && offsetMs != null) attemptMs = offsetMs; // a bonked fake or a badly-timed hold release
+      else attemptMs = attemptedDelta.get(note) ?? null; // an auto-missed note the player may still have reached for
+      if (attemptMs == null) missBreakdown.noTap++;
+      else if (attemptMs >= 0) missBreakdown.tooLate++;
+      else missBreakdown.tooEarly++;
+    }
 
     // Design principle (plan, "the player makes the response sound"):
     // hitting feels good, missing is audibly silent - a miss plays NO live
@@ -1470,7 +1696,20 @@ function startPlay(runCtx) {
     const accuracy = judged > 0 ? (counts.perfect + counts.good + counts.avoided) / judged : 0;
     applyProgression(game, level, accuracy);
     const recalSuggestion = checkRecalibrateSuggestion(allSignedOffsets);
-    showEndScreen({ seed, game, level, counts, score, accuracy, storyResult, allTapsMedianMs: medianOf(allSignedOffsets), recalSuggestion });
+    const allTapsMedianMs = medianOf(allSignedOffsets);
+
+    // Miss breakdown (M1.8): strings built ONCE here, at song end - nothing
+    // upstream of this ever formats text on the tap path.
+    const cueMissLines = buildCueMissLines();
+    if (counts.miss > 0) {
+      pushDebugRow(`miss breakdown: ${missBreakdown.noTap} no-tap, ${missBreakdown.tooEarly} too early, ${missBreakdown.tooLate} too late`);
+      for (const line of cueMissLines) pushDebugRow(line);
+    }
+
+    // Section C: queue this play for cross-device history (no-op unless
+    // signed in) - never awaited, must not delay the end screen appearing.
+    accountUi.recordPlay({ game, level, seed, accuracy, counts, allTapsMedianMs });
+    showEndScreen({ seed, game, level, counts, score, accuracy, storyResult, allTapsMedianMs, recalSuggestion, missBreakdown, cueMissLines });
   }
 }
 
@@ -1504,7 +1743,7 @@ function applyProgression(game, level, accuracy) {
 }
 
 // --- end -------------------------------------------------------------------
-function showEndScreen({ seed, game, level, counts, score, accuracy, storyResult, allTapsMedianMs, recalSuggestion }) {
+function showEndScreen({ seed, game, level, counts, score, accuracy, storyResult, allTapsMedianMs, recalSuggestion, missBreakdown, cueMissLines }) {
   showScreen('end');
 
   // Button handlers assigned FIRST, before any DOM text writes below: a
@@ -1542,6 +1781,18 @@ function showEndScreen({ seed, game, level, counts, score, accuracy, storyResult
     (counts.skipped ? `   Skipped: ${counts.skipped}` : '') +
     `   Accuracy: ${Math.round(accuracy * 100)}%`;
   document.getElementById('end-seed').textContent = `Seed: ${seed}${good ? ` - next up: level ${storage.getLevel()}` : ' - try again'}`;
+
+  // Miss breakdown (M1.8): "which rhythms are unreadable" - no-tap/too-
+  // early/too-late, then one line per cue type with >=1 miss, worst first.
+  // Hidden entirely when there were no misses at all.
+  const missEl = document.getElementById('end-miss-breakdown');
+  if (counts.miss > 0 && missBreakdown) {
+    missEl.hidden = false;
+    const lines = [`Missed: ${missBreakdown.noTap} no tap, ${missBreakdown.tooEarly} too early, ${missBreakdown.tooLate} too late`, ...(cueMissLines || [])];
+    missEl.textContent = lines.join('\n');
+  } else {
+    missEl.hidden = true;
+  }
 
   // Section B: median signed offset over ALL taps (ignored included).
   const medianEl = document.getElementById('end-timing');

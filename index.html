@@ -19,6 +19,16 @@
       <div class="panel panel--menu">
         <h1 class="title">TapESTORY</h1>
         <p class="subtitle">A storybook that paints itself, one tap at a time.</p>
+
+        <!-- ACCOUNT CHIP (section C) - "Guest / Sign in" when signed out,
+             "name / My progress" + a quick "Sign out" when signed in. Wired
+             entirely by js/net/accountUi.js; shows "Accounts not set up"
+             when js/config.js is unconfigured. -->
+        <div id="account-chip" class="account-chip">
+          <button id="btn-account-chip-name" class="account-chip__name" type="button">Guest</button>
+          <button id="btn-account-chip-signout" class="account-chip__signout" type="button" hidden>Sign out</button>
+        </div>
+
         <p id="menu-progress" class="status-text"></p>
         <p id="menu-calibration" class="status-text status-text--small"></p>
 
@@ -88,7 +98,8 @@
         <button id="practice-taparea" class="tap-circle" type="button">TAP</button>
         <div class="menu-actions">
           <button id="btn-practice-hear" class="btn" type="button">Hear it again</button>
-          <button id="btn-practice-continue" class="btn" type="button" hidden>Continue anyway</button>
+          <button id="btn-practice-tryagain" class="btn" type="button" hidden>Try again</button>
+          <button id="btn-practice-continue" class="btn" type="button" hidden>Continue</button>
           <button id="btn-practice-skip" class="btn" type="button">Skip</button>
         </div>
       </div>
@@ -126,6 +137,7 @@
         <p id="end-caption" class="end-caption"></p>
         <p id="end-score" class="end-stat"></p>
         <p id="end-counts" class="end-stat"></p>
+        <p id="end-miss-breakdown" class="end-stat end-miss-breakdown" hidden></p>
         <p id="end-seed" class="end-stat end-seed"></p>
         <p id="end-timing" class="end-stat" hidden></p>
         <p id="end-recalibrate" class="end-stat end-recalibrate" hidden></p>
@@ -136,6 +148,109 @@
           <button id="btn-play-again" class="btn btn--primary" type="button">Play again (new seed)</button>
           <button id="btn-replay-seed" class="btn" type="button">Replay this seed</button>
           <button id="btn-end-menu" class="btn" type="button">Back to menu</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ACCOUNT (section C) - sign in / create account. Code-first
+         (default): email -> 6-digit code -> verify. "Use a password
+         instead" switches to email+password sign-in/sign-up. Wired by
+         js/net/accountUi.js only. -->
+    <section id="screen-account" class="screen">
+      <div class="panel panel--account">
+        <h2>Sign in</h2>
+        <p id="account-status" class="status-text"></p>
+        <p id="account-error" class="status-text account-error" hidden></p>
+
+        <div id="account-step-email">
+          <label class="account-field">
+            Email
+            <input id="account-email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" />
+          </label>
+          <div class="menu-actions">
+            <button id="btn-account-send-code" class="btn btn--primary" type="button">Send code</button>
+          </div>
+          <button id="btn-account-use-password" class="account-toggle" type="button">Use a password instead</button>
+        </div>
+
+        <div id="account-step-code" hidden>
+          <p class="status-text status-text--small">Enter the 6-digit code we emailed you.</p>
+          <label class="account-field">
+            Code
+            <input id="account-code" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" maxlength="6" placeholder="123456" />
+          </label>
+          <div class="menu-actions">
+            <button id="btn-account-verify" class="btn btn--primary" type="button">Verify</button>
+            <button id="btn-account-resend" class="btn" type="button">Resend code</button>
+          </div>
+          <button id="btn-account-code-back" class="account-toggle" type="button">Use a different email</button>
+        </div>
+
+        <div id="account-step-password" hidden>
+          <label class="account-field">
+            Email
+            <input id="account-pw-email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" />
+          </label>
+          <label class="account-field">
+            Password
+            <input id="account-password" type="password" autocomplete="current-password" placeholder="At least 6 characters" />
+          </label>
+          <div class="menu-actions">
+            <button id="btn-account-signin-password" class="btn btn--primary" type="button">Sign in</button>
+            <button id="btn-account-signup-password" class="btn" type="button">Create account</button>
+          </div>
+          <button id="btn-account-use-code" class="account-toggle" type="button">Use an email code instead</button>
+        </div>
+
+        <div id="account-step-name" hidden>
+          <p class="status-text">Signed in! What should we call you?</p>
+          <label class="account-field">
+            Display name
+            <input id="account-display-name" type="text" maxlength="30" placeholder="Your name" />
+          </label>
+          <div class="menu-actions">
+            <button id="btn-account-name-save" class="btn btn--primary" type="button">Save</button>
+            <button id="btn-account-name-skip" class="btn" type="button">Skip</button>
+          </div>
+        </div>
+
+        <div class="menu-actions">
+          <button id="btn-account-back" class="btn" type="button">Back to menu</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- MY PROGRESS (section C) - recent plays, best accuracy per game, a
+         "Set a password" form and Sign out. Wired by js/net/accountUi.js
+         only. -->
+    <section id="screen-progress" class="screen">
+      <div class="panel panel--progress">
+        <h2>My progress</h2>
+        <p id="progress-status" class="status-text"></p>
+        <p id="progress-summary" class="status-text status-text--small"></p>
+
+        <h3 class="progress-subheading">Best accuracy</h3>
+        <div id="progress-best" class="progress-list"></div>
+
+        <h3 class="progress-subheading">Recent plays</h3>
+        <div id="progress-plays" class="progress-list"></div>
+
+        <div class="progress-set-password">
+          <h3 class="progress-subheading">Set a password</h3>
+          <p class="status-text status-text--small">Optional - lets you sign in without waiting for an email code.</p>
+          <label class="account-field">
+            New password
+            <input id="progress-password" type="password" autocomplete="new-password" placeholder="At least 6 characters" />
+          </label>
+          <div class="menu-actions">
+            <button id="btn-progress-set-password" class="btn" type="button">Save password</button>
+          </div>
+          <p id="progress-password-status" class="status-text status-text--small"></p>
+        </div>
+
+        <div class="menu-actions">
+          <button id="btn-progress-signout" class="btn" type="button">Sign out</button>
+          <button id="btn-progress-back" class="btn" type="button">Back to menu</button>
         </div>
       </div>
     </section>

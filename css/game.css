@@ -794,6 +794,16 @@ body {
   font-weight: 700;
   color: var(--accent-dark);
 }
+/* Miss breakdown (M1.8) - a "no tap / too early / too late" line plus one
+   line per cue type with >=1 miss, worst first (js/main.js finishPlay). A
+   few short lines joined with \n, so this needs white-space:pre-line on
+   top of the shared .end-stat look; hidden entirely when there are no
+   misses. */
+.end-miss-breakdown {
+  white-space: pre-line;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
 
 /* --- debug overlay (?debug) ---------------------------------------------- */
 
@@ -836,6 +846,136 @@ body {
     padding: 18px;
   }
   .menu-actions {
+    max-width: 100%;
+  }
+}
+
+/* --- accounts (section C) -------------------------------------------------
+   Menu account chip, #screen-account (sign in / create account) and
+   #screen-progress (recent plays / best accuracy / set password / sign
+   out). New ids/classes only - no existing element is restyled. Uses the
+   same colour tokens as the rest of the page (:root above). */
+
+.account-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+}
+
+.account-chip__name,
+.account-chip__signout {
+  font: inherit;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.account-chip__name:active,
+.account-chip__signout:active {
+  transform: scale(0.97);
+}
+
+.account-chip__signout {
+  color: var(--muted);
+}
+
+.panel--account,
+.panel--progress {
+  max-width: 480px;
+  text-align: left;
+}
+
+.panel--account h2,
+.panel--progress h2 {
+  text-align: center;
+  color: var(--ink-soft);
+  margin-top: 0;
+}
+
+.account-error {
+  color: #b33;
+  font-weight: 600;
+}
+
+.account-field {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+
+.account-field input {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  font: inherit;
+  font-size: 1rem;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  background: #fff;
+  color: var(--ink);
+  box-sizing: border-box;
+}
+
+.account-field input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.account-toggle {
+  display: block;
+  width: 100%;
+  text-align: center;
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  text-decoration: underline;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 8px 0;
+  cursor: pointer;
+}
+
+.progress-subheading {
+  font-size: 1rem;
+  color: var(--ink-soft);
+  margin: 16px 0 6px;
+}
+
+.progress-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.progress-row {
+  padding: 6px 10px;
+  background: var(--paper);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.progress-set-password {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 400px) {
+  .panel--account,
+  .panel--progress {
     max-width: 100%;
   }
 }

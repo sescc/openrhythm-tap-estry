@@ -60,7 +60,10 @@ export function compose(rng, levelParams, beats, kind) {
     // beats for a single judged event) and a bit more on the mixed-in taps
     // (2 beats each) - still "mostly holds, some taps", just enough to
     // keep density from trailing every other game.
-    const doHold = forceHold ? true : forceTap ? false : rng.chance(0.55);
+    // M1.8 gentler level 1: only the simplest cue (pumpTick/hold) appears -
+    // tapTick is held back until level 2, its one variation. Level 2+
+    // keeps the existing 0.55 mix unchanged.
+    const doHold = forceHold ? true : forceTap ? false : levelParams.level === 1 ? true : rng.chance(0.55);
 
     if (doHold) {
       const holdBeats = forceHold ? 2 : rng.pick(holdLenOptions(levelParams.level));
@@ -76,7 +79,12 @@ export function compose(rng, levelParams, beats, kind) {
       // Teaching sections rest a full beat after the hold so the release
       // reads clearly; elsewhere the next tick often follows sooner, so a
       // section fits more holds/taps instead of a long silent tail.
-      cursor = releaseBeat + (forceHold || forceTap ? 1 : rng.pick([0, 0.5, 0.5, 1]));
+      // M1.8 gentler levels 1-2: no 0.5-beat rest through level 2, so every
+      // tick/press/release stays on a whole beat - level 2's own one
+      // variation is tapTick (above), not this too. The rest reappears at
+      // level 3, unchanged from its original unconditional behaviour there.
+      const restChoices = levelParams.level <= 2 ? [0, 1] : [0, 0.5, 0.5, 1];
+      cursor = releaseBeat + (forceHold || forceTap ? 1 : rng.pick(restChoices));
     } else {
       const tickBeat = cursor;
       const tapBeat = cursor + 1;

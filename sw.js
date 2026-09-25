@@ -7,7 +7,7 @@
 // VERSION changes this file's bytes, which is what makes browsers install
 // the new version on the next visit.
 
-const VERSION = 'e893992808b6'; // stamp:version
+const VERSION = '87220dbe4bbc'; // stamp:version
 const ASSETS = [
   './',
   'index.html',
@@ -22,6 +22,7 @@ const ASSETS = [
   'js/calibration.js',
   'js/chart.js',
   'js/clock.js',
+  'js/config.js',
   'js/games/bounce.js',
   'js/games/echo.js',
   'js/games/index.js',
@@ -32,7 +33,12 @@ const ASSETS = [
   'js/games/triplet.js',
   'js/input.js',
   'js/main.js',
+  'js/net/accountUi.js',
+  'js/net/auth.js',
+  'js/net/merge.js',
+  'js/net/sync.js',
   'js/pause.js',
+  'js/practice.js',
   'js/render/stage.js',
   'js/rng.js',
   'js/songform.js',

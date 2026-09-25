@@ -41,6 +41,11 @@ function motifPool(levelParams) {
   let pool = MOTIFS['8th'].slice();
   if (levelParams.subdivisions.includes('16th')) pool = pool.concat(MOTIFS['16th']);
   if (levelParams.subdivisions.includes('triplet')) pool = pool.concat(MOTIFS.triplet);
+  // M1.8 gentler level 1: every judged response lands on a whole beat, so
+  // the half-beat 8th-note motifs (e.g. [0,0.5,1,2]) are held back until
+  // level 2 - its one variation (the off-beat pattern reappears exactly as
+  // it always did from level 2 up; nothing here changes level 2+).
+  if (levelParams.level === 1) pool = pool.filter((m) => m.every((b) => Number.isInteger(b)));
   const filtered = pool.filter((m) => minGap(m) >= minBeatGap);
   return filtered.length > 0 ? filtered : MOTIFS['8th'];
 }

@@ -4,6 +4,8 @@
 // storage, etc.) - the game should degrade gracefully (just re-calibrate
 // every visit) rather than crash.
 
+import { buildOutboxRow, enqueueOutbox } from './net/merge.js';
+
 const KEY_CALIBRATION_MS = 'ord.calibrationOffsetMs';
 const KEY_CALIBRATION_SPREAD_MS = 'ord.calibrationSpreadMs';
 const KEY_CALIBRATED = 'ord.calibrated';
@@ -193,4 +195,123 @@ export function migrateIfNeeded() {
   }
   safeSet(KEY_STORAGE_VERSION, String(STORAGE_VERSION));
   return true; // caller can use this to show a one-time "we reset your progress" note
+}
+
+// --- accounts / sync (section C) --------------------------------------
+// Session, outbox, device id/label, and the progress <-> snapshot bridge
+// used by js/net/merge.js + js/net/sync.js. Calibration is deliberately
+// NEVER part of any of this - it's per-device, not per-player (see
+// js/calibration.js's own header for why latency varies device-to-device).
+
+const KEY_SESSION = 'ord.session'; // JSON {accessToken, refreshToken, expiresAtMs, userId, email}
+const KEY_OUTBOX = 'ord.outbox'; // JSON array of queued `plays` rows, one per finished game
+const KEY_DEVICE_ID = 'ord.deviceId';
+const KEY_DEVICE_LABEL = 'ord.deviceLabel';
+
+export function getSession() {
+  return safeParseJson(safeGet(KEY_SESSION), null);
+}
+
+export function setSession(session) {
+  safeSet(KEY_SESSION, JSON.stringify(session));
+}
+
+export function clearSession() {
+  try {
+    localStorage.removeItem(KEY_SESSION);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** RFC4122-ish v4 uuid. Prefers the real crypto.randomUUID() (every
+ * evergreen browser + Node 19+); the fallback is only for an environment
+ * without it and doesn't need to be cryptographically strong - it's a
+ * dedupe key (plays.client_id) and a device label, not a secret. */
+function randomUuid() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+/** A random id generated once per device/browser profile and cached - NOT
+ * tied to any account, so it stays stable across sign-in/out and is what
+ * lets "My progress" show which device a play came from. */
+export function getDeviceId() {
+  let id = safeGet(KEY_DEVICE_ID);
+  if (!id) {
+    id = randomUuid();
+    safeSet(KEY_DEVICE_ID, id);
+  }
+  return id;
+}
+
+export function getDeviceLabel() {
+  const stored = safeGet(KEY_DEVICE_LABEL);
+  if (stored) return stored;
+  try {
+    return /mobi/i.test(navigator.userAgent || '') ? 'Phone' : 'This device';
+  } catch {
+    return 'This device';
+  }
+}
+
+export function setDeviceLabel(label) {
+  safeSet(KEY_DEVICE_LABEL, String(label).slice(0, 40));
+}
+
+// --- progress snapshot (js/net/merge.js's input/output shape) --------------
+
+export function getProgressSnapshot() {
+  return {
+    level: getLevel(),
+    cleared: getClearedIds(),
+    practicedCues: Array.from(getPracticedCues()),
+    gamesPlayed: getGamesPlayed(),
+  };
+}
+
+/** Writes a merged snapshot back into the existing per-field storage keys
+ * (KEY_LEVEL/KEY_CLEARED/KEY_PRACTICED_CUES/KEY_GAMES_PLAYED) so every
+ * other existing reader (getLevel/getCleared/isCuePracticed/...) keeps
+ * working unchanged after a sync. */
+export function applyProgressSnapshot(snapshot) {
+  if (!snapshot) return;
+  setLevel(snapshot.level || 1);
+  const clearedObj = {};
+  for (const id of snapshot.cleared || []) clearedObj[id] = true;
+  safeSet(KEY_CLEARED, JSON.stringify(clearedObj));
+  safeSet(KEY_PRACTICED_CUES, JSON.stringify(Array.from(new Set(snapshot.practicedCues || []))));
+  safeSet(KEY_GAMES_PLAYED, String(Math.max(0, snapshot.gamesPlayed || 0)));
+}
+
+// --- outbox (queued `plays` rows, flushed while online) ---------------------
+
+export function getOutbox() {
+  return safeParseJson(safeGet(KEY_OUTBOX), []);
+}
+
+export function setOutbox(rows) {
+  safeSet(KEY_OUTBOX, JSON.stringify(rows));
+}
+
+export function clearOutbox() {
+  safeSet(KEY_OUTBOX, '[]');
+}
+
+/** Appends one finished play to the outbox, tagged with a fresh
+ * client-generated uuid (`client_id`) - the dedupe key the server relies on
+ * (supabase/schema.sql's unique(user_id, client_id) + js/net/sync.js
+ * pushPlays' `Prefer: resolution=ignore-duplicates`), so a retried flush
+ * can never insert the same play twice. The actual row-shape/dedupe logic
+ * is js/net/merge.js's buildOutboxRow/enqueueOutbox (pure, Node-tested) -
+ * this is just id generation (the one bit of impurity, crypto.randomUUID())
+ * plus the localStorage read/write. Returns the row actually queued. */
+export function enqueuePlay(play) {
+  const row = buildOutboxRow(play, randomUuid(), getDeviceLabel());
+  setOutbox(enqueueOutbox(getOutbox(), row));
+  return row;
 }

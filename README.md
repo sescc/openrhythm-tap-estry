@@ -100,6 +100,66 @@ installed as an app (`manifest.webmanifest`). The service worker is not
 registered on `localhost` (so a dev server never serves stale files); add
 `?sw=on` to test it locally and `?sw=off` to remove it.
 
+## Setting up accounts (Supabase)
+
+Accounts and cross-device progress (section C) are **optional** - with
+`js/config.js` left as-is (empty `SUPABASE_URL`/`SUPABASE_ANON_KEY`), every
+account UI shows "Accounts not set up" and the game works exactly as it did
+before this feature existed: guest play, local-only progress. Everything
+below is only needed if you want sign-in + synced progress to actually work.
+
+1. **Create a free Supabase project** at [supabase.com](https://supabase.com).
+2. **In Auth > Providers > Email:**
+   - turn the Email provider **on**;
+   - turn **"Confirm email" off** (for this demo - so a password sign-up gets
+     a session immediately instead of waiting on a confirmation email).
+3. **In Auth > Sign In / Providers (or "Auth settings", depending on the
+   dashboard version) set the OTP length to 6 and the expiry to about 600
+   seconds (10 minutes).**
+4. **Edit the "Magic Link" email template** (Auth > Email Templates) to show
+   the code instead of a link, since the app calls the same endpoint for
+   both and just uses the code (`{{ .Token }}`), not the link. A minimal
+   template body:
+
+   ```html
+   <h2>Your TapESTORY sign-in code</h2>
+   <p>Enter this code in the app:</p>
+   <p style="font-size: 28px; font-weight: 700; letter-spacing: 4px;">{{ .Token }}</p>
+   <p>It expires in 10 minutes.</p>
+   ```
+5. **Optional but recommended: add a free custom SMTP sender** (Auth >
+   Settings > SMTP), e.g. [Resend](https://resend.com) or
+   [Brevo](https://www.brevo.com) - both have a free tier. Supabase's
+   built-in email sender only allows a few emails per hour, which is too few
+   once more than one or two people are trying the app. For a live demo
+   without depending on anyone's inbox (or the rate limit), a pre-made
+   password test account is the reliable fallback - sign it up once via
+   "Use a password instead" and share those credentials.
+6. **Set the Site URL** (Auth > URL Configuration) to your GitHub Pages URL,
+   and **add `http://localhost:8080` as an additional redirect URL** for
+   local testing.
+7. **Run `supabase/schema.sql`** once in the SQL editor (Database > SQL
+   Editor > New query, paste, Run). It creates `profiles`, `progress` and
+   `plays` with row-level security enabled on all three (every policy scoped
+   to `auth.uid()`), plus the triggers that create a `profiles` row on
+   sign-up and keep `updated_at` current. It's written to be safe to re-run.
+8. **Paste the project URL and anon key into `js/config.js`** (Project
+   Settings > API in the dashboard):
+
+   ```js
+   export const SUPABASE_URL = 'https://xxxxxxxx.supabase.co';
+   export const SUPABASE_ANON_KEY = 'eyJ...'; // the "anon" / "public" key, NOT the service_role key
+   ```
+
+   The anon key is **public by design** - it ships in the client bundle for
+   every Supabase project, and row-level security (not key secrecy) is what
+   actually protects the data. Never put the `service_role` key anywhere in
+   client code.
+
+**Free-tier note:** a Supabase free project **pauses after about 7 days of
+inactivity**. One click ("Restore") in the dashboard brings it back - just
+remember to do that before a demo if the project's been idle a while.
+
 ## Deploying your own copy
 
 The game itself needs no build and no dependencies. Node.js (v20 or newer) is

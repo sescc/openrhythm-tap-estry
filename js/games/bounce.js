@@ -86,7 +86,11 @@ export function compose(rng, levelParams, beats, kind) {
     // usually starts sooner (never right ON the previous response, so its
     // tap sfx and the next run's first bounce don't collide in the mix),
     // so a section fits more than one run instead of sitting quiet.
-    cursor = responseBeat + (teaching ? 1 : rng.pick([0, 0, 0.5, 1]));
+    // M1.8 gentler level 1: the 0.5-beat rest is what could otherwise push
+    // a LATER run's bounces/response off the whole-beat grid, so it's held
+    // back until level 2 (its one variation) - level 2+ is unchanged.
+    const restChoices = levelParams.level === 1 ? [0, 0, 1] : [0, 0, 0.5, 1];
+    cursor = responseBeat + (teaching ? 1 : rng.pick(restChoices));
   }
 
   if (events.length === 0) {

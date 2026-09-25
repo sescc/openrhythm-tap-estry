@@ -50,7 +50,12 @@ export function compose(rng, levelParams, beats, kind) {
     // densest game - non-teaching sections lean a bit more on the sparser
     // single-clap catch, and get an occasional breath between runs, so the
     // whole song doesn't run far denser than every other minigame.
-    const useWhoosh = forceWhoosh ? true : forceClap ? false : rng.chance(0.45);
+    // M1.8 gentler level 1: triplet runs are inherently off-grid (the whole
+    // 3-against-2 point of "whoosh"), so level 1 uses only the whole-beat
+    // "clap" catch - even in teachA, which would otherwise force a whoosh
+    // run. Level 2 reintroduces whoosh as its one (off-beat) variation;
+    // level 2+ behaviour here is otherwise unchanged.
+    const useWhoosh = levelParams.level === 1 ? false : forceWhoosh ? true : forceClap ? false : rng.chance(0.45);
     // Rest chance scales gently with level: higher levels already pack more
     // (shorter, tempo-driven) sections into the same ~70s target, so the
     // per-run breather needs to grow too or the highest levels would run

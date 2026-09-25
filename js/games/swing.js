@@ -50,6 +50,11 @@ export function compose(rng, levelParams, beats, kind) {
   const teaching = kind === 'teachA';
   const fakeAllowed = kind !== 'teachA' && levelParams.fakeRate > 0;
   let forceFakeOnce = kind === 'teachB' && fakeAllowed;
+  // M1.8 gentler level 1: the woodblock hit itself is taught straight (on
+  // the beat) first - the swung "and" placement is held back to level 2,
+  // its one off-beat-pattern variation. Level 2+ is unchanged (SWING was
+  // always applied unconditionally before this).
+  const swingAmt = levelParams.level === 1 ? 0 : SWING;
 
   let cursor = 0;
   let guard = 0;
@@ -60,7 +65,7 @@ export function compose(rng, levelParams, beats, kind) {
     if (cursor + runLen + 1 > beats) break;
 
     for (let i = 0; i < runLen; i++) {
-      const slotBeat = cursor + i + SWING;
+      const slotBeat = cursor + i + swingAmt;
       if (i < demoCount) {
         cues.push({ beat: slotBeat, cueId: 'woodblock', variant: Math.min(i, 3) });
         continue;
@@ -79,9 +84,9 @@ export function compose(rng, levelParams, beats, kind) {
   }
 
   if (events.length === 0) {
-    cues.push({ beat: SWING, cueId: 'woodblock', variant: 0 });
-    cues.push({ beat: 1 + SWING, cueId: 'woodblock', variant: 1 });
-    events.push({ beat: 1 + SWING, kind: 'tap', cueId: 'woodblock' });
+    cues.push({ beat: swingAmt, cueId: 'woodblock', variant: 0 });
+    cues.push({ beat: 1 + swingAmt, cueId: 'woodblock', variant: 1 });
+    events.push({ beat: 1 + swingAmt, kind: 'tap', cueId: 'woodblock' });
   }
 
   return { events, cues };

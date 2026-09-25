@@ -77,7 +77,14 @@ export function buildChart(rng, game, level, extra = {}) {
 
   const isRemix = game.id === 'remix';
   const subGames = isRemix ? game.pickSubGames(rng, extra.clearedIds || []) : null;
-  const hasSecondCue = isRemix ? true : (game.cueTypes || []).length > 1;
+  // M1.8 gentler levels 1-2: a non-remix chart never schedules a
+  // teachB/varyB/combine section at level 1, so only the game's simplest
+  // (first-taught) cue type ever appears there - level 2 is the first level
+  // that introduces the second cue type (its "one variation"). Remix is
+  // unaffected (always true, unchanged) - it has no cue vocabulary of its
+  // own and isn't normally reachable before level 2 anyway (needs >=2
+  // cleared games - see js/games/index.js isRemixTurn()).
+  const hasSecondCue = isRemix ? true : (game.cueTypes || []).length > 1 && levelParams.level >= 2;
 
   const fixedBeats = INTRO_BEATS + OUTRO_BEATS;
   const avgPhraseBeats = 8;
@@ -97,6 +104,13 @@ export function buildChart(rng, game, level, extra = {}) {
 
   kinds.forEach((kind, i) => {
     let beats = SECTION_BEATS[kind] || 8;
+    // M1.8 gentler levels 1-2: give the teaching section(s) extra repetition
+    // time at level 1 specifically (teachB is unreachable at level 1 per
+    // hasSecondCue above, so in practice this only ever extends teachA) -
+    // "teaching sections are at least as long as now, longer if it fits the
+    // song form". Purely additive (more beats for the same compose() logic
+    // to fill), so it can't introduce a new collision/predictability issue.
+    if (levelParams.level === 1 && (kind === 'teachA' || kind === 'teachB')) beats += 4;
     // Remix-only "unconventional but announced" knob: an occasional 7/8 bar
     // at level 8+, flagged with its own distinct (unscored) cue right at
     // the section's start so it's heard before it's played, not sprung on

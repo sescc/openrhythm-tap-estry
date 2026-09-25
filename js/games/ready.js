@@ -10,7 +10,11 @@
 function allowedGaps(level) {
   if (level >= 7) return [1, 0.5, 1.5, 0.75];
   if (level >= 5) return [1, 0.5, 1.5];
-  if (level >= 3) return [1, 0.5];
+  // M1.8 gentler levels 1-2: the level-3+ threshold moved down to 2, so
+  // level 2 gets the half-beat gap as its one variation (level 1 still
+  // falls through to the plain [1] below) - levels 3+ return the exact
+  // same [1, 0.5] they always did, just from a now-more-inclusive branch.
+  if (level >= 2) return [1, 0.5];
   return [1];
 }
 
@@ -80,7 +84,12 @@ export function compose(rng, levelParams, beats, kind) {
     // next launch's "ready" often starts soon after the previous response
     // (never AT it - that would bury the response's own tap sfx under the
     // next cue), so a section doesn't sit half-empty once the gap is small.
-    const rest = teaching ? 1 : rng.pick([0, 0.5, 0.5, 1]);
+    // M1.8 gentler level 1: no 0.5-beat rest, so a LATER launch's response
+    // can't drift off the whole-beat grid even though this launch's own
+    // 2*d is already an integer - level 2 regains it (part of the same one
+    // variation as the half-beat gap above).
+    const restChoices = levelParams.level === 1 ? [0, 1] : [0, 0.5, 0.5, 1];
+    const rest = teaching ? 1 : rng.pick(restChoices);
     cursor += launchLen + rest;
   }
 
